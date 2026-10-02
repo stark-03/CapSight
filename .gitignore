@@ -13,3 +13,9 @@
 .externalNativeBuild
 .cxx
 local.properties
+__pycache__/
+*.pyc
+# Release signing stays outside the repo (CLAUDE.md §10)
+keystore.properties
+*.jks
+*.keystore
