@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
 import android.util.Log
+import androidx.core.graphics.scale
 import com.example.capsight.TAG
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -64,9 +65,7 @@ class VideoFileSource(private val context: Context, private val uri: Uri) : Fram
         val full = retriever.getFrameAtTime(positionUs, option) ?: return null
         val scale = MAX_EDGE_PX.toFloat() / maxOf(full.width, full.height)
         if (scale >= 1f) return full
-        return Bitmap.createScaledBitmap(
-            full, (full.width * scale).toInt(), (full.height * scale).toInt(), true,
-        )
+        return full.scale((full.width * scale).toInt(), (full.height * scale).toInt())
     }
 
     companion object {
