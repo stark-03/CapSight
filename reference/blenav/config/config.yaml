@@ -1,0 +1,63 @@
+# ==========================================================
+# BLE + Camera Navigation System - runtime configuration
+# Everything tunable lives here. No magic numbers in code.
+# ==========================================================
+
+camera:
+  source: 0            # int = webcam index, or "data/demo.mp4" for a recorded run
+  width: 1280
+  height: 720
+  # Windows needs dshow or opening is slow and resolution requests are ignored.
+  backend_windows: dshow
+  backend_linux: any
+
+detector:
+  weights: yolov8n.pt
+  stairs_weights: null      # set to models/stairs.pt after the Colab fine-tune
+  imgsz: 416                # drop to 320 on the i3 if FPS < 8
+  conf: 0.35
+  device: cpu
+  frame_skip: 1             # run inference every Nth grabbed frame (1 = every frame)
+  obstacle_ttl_s: 2.5       # how long a static obstacle stays on the map unseen
+
+guidance:
+  loop_hz: 10               # runs at this rate regardless of detector speed
+  stop_distance_m: 1.5      # "Stop. Obstacle ahead."
+  warn_distance_m: 3.5      # "Obstacle ahead. Move left."
+  stairs_warn_m: 4.0
+  path_deviation_m: 0.6
+  heading_window_s: 0.8     # motion history used to estimate which way user faces
+  cooldown_s: 3.0           # min gap before repeating the same message
+  clear_repeat_s: 6.0       # "Continue straight." cadence
+
+ble:
+  target_address: null      # e.g. "AA:BB:CC:DD:EE:FF" - fill in after flashing ESP32
+  target_name: BLENAV_BEACON
+  scan_interval_s: 1.0
+  rssi_window: 5            # moving-average samples
+  present_rssi: -85         # above this = user considered present
+  lost_after_s: 5.0
+  # log-distance path loss: d = 10 ^ ((tx_power - rssi) / (10 * n))
+  tx_power: -59             # RSSI at 1 metre - calibrate with the real beacon
+  path_loss_n: 2.5
+
+voice:
+  rate: 165
+  volume: 1.0
+
+# First-person mode: the camera is CARRIED BY the user (a phone), not mounted on
+# the ceiling. Distance comes from apparent object size, so no calibration is
+# needed - but only known object classes get a distance at all.
+#   python -m blenav.main --first-person --source http://<phone-ip>:8080/video
+first_person:
+  horizontal_fov_deg: 65    # phone main camera, typically 60-70. Override with --fov
+  min_confidence: 0.40      # stricter than the ceiling mode: a handheld view is shakier
+  skip_unreliable: true     # ignore flat desk items (keyboard, book, cup, laptop)
+  speak_object_names: true  # say "Chair ahead" rather than "Obstacle ahead"
+  hold_ticks: 6             # keep warning ~0.6s after a dropout, so one missed
+                            # frame is never read as "all clear"
+  stop_distance_m: 1.2      # closer than the ceiling mode - the user sees less ahead
+  warn_distance_m: 2.5
+
+world:
+  calibration_file: config/calibration.yaml   # written by calibrate.py

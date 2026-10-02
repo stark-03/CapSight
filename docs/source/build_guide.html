@@ -1,0 +1,937 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cap Navigation Build Guide</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Print build guide: A4, one idea per page block. Ink-blue structure, tactile-yellow for "buy" and step numbers. */
+:root {
+  --ink: #1b2a33; --muted: #56626e; --rule: #d9dee4; --soft: #f3f6f8;
+  --blue: #1d4f7a; --yellow: #f2c230; --yellow-ink: #4a3900;
+  --green: #2e7d4f; --green-soft: #e3f2e8; --grey-soft: #eceff1;
+  --body: "Atkinson Hyperlegible", "Segoe UI", Arial, sans-serif;
+  --mono: "JetBrains Mono", Consolas, monospace;
+}
+@page { size: A4; margin: 14mm 14mm 16mm; }
+* { box-sizing: border-box; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { margin: 0; color: var(--ink); background: #fff; font-family: var(--body); font-size: 10.5pt; line-height: 1.5; }
+h1 { font-size: 27pt; line-height: 1.12; margin: 0 0 8px; text-wrap: balance; }
+h2 { font-size: 17pt; margin: 0 0 6px; color: var(--blue); break-after: avoid; }
+h3 { font-size: 12.5pt; margin: 14px 0 4px; break-after: avoid; }
+p { margin: 0 0 8px; }
+ul, ol { margin: 0 0 8px; padding-left: 18px; }
+li + li { margin-top: 2px; }
+code, .mono { font-family: var(--mono); font-size: .88em; }
+code { background: var(--soft); padding: 1px 4px; border-radius: 3px; }
+.page { break-before: page; }
+.lead { color: var(--muted); font-size: 11.5pt; max-width: 60ch; }
+.eyebrow { font-size: 9pt; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; }
+figure { margin: 10px 0 12px; break-inside: avoid; }
+figure svg { width: 100%; height: auto; display: block; }
+figcaption { font-size: 9pt; color: var(--muted); margin-top: 4px; }
+.frame { border: 1px solid var(--rule); border-radius: 8px; padding: 8px; background: #fff; }
+
+/* cover */
+.cover-meta { display: grid; grid-template-columns: max-content 1fr; gap: 3px 16px; font-size: 10pt; margin: 14px 0 0; }
+.cover-meta dt { color: var(--muted); }
+.cover-meta dd { margin: 0; }
+
+/* parts cards */
+.cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.card { border: 1px solid var(--rule); border-radius: 8px; padding: 8px 10px 10px; break-inside: avoid; display: flex; flex-direction: column; gap: 4px; }
+.card svg { width: 100%; height: 25mm; background: var(--soft); border-radius: 6px; }
+.card .top { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.card .name { font-weight: 700; font-size: 10.5pt; line-height: 1.25; }
+.card .num { font-family: var(--mono); font-size: 8.5pt; color: var(--muted); }
+.card .why { font-size: 9pt; color: var(--muted); line-height: 1.35; }
+.card .foot { display: flex; justify-content: space-between; align-items: center; margin-top: auto; font-size: 9pt; }
+.tag { font-size: 8pt; font-weight: 700; letter-spacing: .04em; padding: 1px 7px; border-radius: 999px; white-space: nowrap; }
+.tag.have { background: var(--green-soft); color: var(--green); }
+.tag.buy { background: var(--yellow); color: var(--yellow-ink); }
+.tag.opt { background: var(--grey-soft); color: #4b5763; }
+.price { font-variant-numeric: tabular-nums; font-weight: 700; }
+
+table { border-collapse: collapse; width: 100%; font-size: 9.5pt; margin: 6px 0 10px; }
+th, td { text-align: left; vertical-align: top; padding: 5px 8px; border-bottom: 1px solid var(--rule); }
+th { font-size: 8.5pt; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); background: var(--soft); }
+td.r, th.r { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+tr { break-inside: avoid; }
+tfoot td { font-weight: 700; background: var(--soft); }
+
+/* steps */
+.step { display: grid; grid-template-columns: 34px 1fr; gap: 0 12px; margin: 0 0 4px; }
+.step td, .step th { padding: 4px 7px; }
+.step .n { width: 30px; height: 30px; border-radius: 50%; background: var(--yellow); color: var(--yellow-ink); font-weight: 700; font-size: 13pt; display: grid; place-items: center; margin-top: 2px; }
+.step h2 { margin-top: 3px; }
+.step > div { min-width: 0; }
+.check { list-style: none; padding-left: 0; }
+.check li::before { content: "☐ "; color: var(--blue); }
+.note { border-left: 3px solid var(--yellow); background: #fffaf0; padding: 7px 10px; margin: 8px 0; font-size: 9.5pt; break-inside: avoid; }
+.note.warn { border-left-color: #c0392b; background: #fdf3f2; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.legend { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 18px; font-size: 9.5pt; padding-left: 0; list-style: none; }
+.legend b { display: inline-block; width: 18px; height: 18px; border-radius: 50%; background: var(--blue); color: #fff; text-align: center; font-size: 9pt; line-height: 18px; margin-right: 6px; }
+</style>
+</head>
+<body>
+
+<!-- ======================================================= COVER -->
+<section>
+  <p class="eyebrow">Hardware build guide · AITM Belagavi · Dept. of CSE</p>
+  <h1>Camera-Based Navigation System for Visually Impaired People</h1>
+  <p class="lead">Every part you need, what the finished wearable looks like, and the build steps from flashing the camera to demo day. This guide uses the AI-Thinker ESP32-CAM you already have.</p>
+
+  <figure class="frame">
+    <svg viewBox="0 0 900 540" role="img" aria-label="Side view of a user wearing the cap camera">
+      <defs>
+        <linearGradient id="floor" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e9eef2"/><stop offset="1" stop-color="#f7f9fa"/></linearGradient>
+      </defs>
+      <rect x="0" y="510" width="900" height="30" fill="url(#floor)"/>
+      <line x1="0" y1="510" x2="900" y2="510" stroke="#90a4ae" stroke-width="2"/>
+      <!-- camera field of view -->
+      <polygon points="312,100 900,193 900,510 644,510" fill="#f2c230" opacity=".16"/>
+      <line x1="312" y1="100" x2="900" y2="193" stroke="#c99a12" stroke-width="2" stroke-dasharray="7 6"/>
+      <line x1="312" y1="100" x2="644" y2="510" stroke="#c99a12" stroke-width="2" stroke-dasharray="7 6"/>
+      <!-- floor distance ticks: 242 px per metre from the user's feet line x=312 -->
+      <g font-family="JetBrains Mono, monospace" font-size="13" fill="#56626e" text-anchor="middle">
+        <line x1="554" y1="504" x2="554" y2="518" stroke="#56626e" stroke-width="2"/><text x="554" y="534">1 m</text>
+        <line x1="796" y1="504" x2="796" y2="518" stroke="#56626e" stroke-width="2"/><text x="796" y="534">2 m</text>
+      </g>
+      <!-- chair obstacle -->
+      <g stroke="#1b2a33" stroke-width="4" fill="none" stroke-linecap="round">
+        <line x1="760" y1="440" x2="830" y2="440"/><line x1="830" y1="440" x2="830" y2="380"/>
+        <line x1="766" y1="440" x2="766" y2="510"/><line x1="824" y1="440" x2="824" y2="510"/>
+      </g>
+      <rect x="752" y="420" width="96" height="104" fill="none" stroke="#c0392b" stroke-width="2.5" stroke-dasharray="5 4"/>
+      <text x="822" y="412" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="13" fill="#c0392b">chair 0.82 · 2.0 m</text>
+      <!-- person -->
+      <g fill="#dfe6eb" stroke="#1b2a33" stroke-width="2">
+        <rect x="214" y="338" width="34" height="168" rx="10"/>
+        <rect x="252" y="338" width="34" height="168" rx="10"/>
+        <ellipse cx="240" cy="506" rx="26" ry="7"/><ellipse cx="280" cy="506" rx="26" ry="7"/>
+        <path d="M200 182 Q250 168 300 182 L312 346 L196 346 Z"/>
+        <rect x="238" y="156" width="24" height="26"/>
+        <ellipse cx="250" cy="118" rx="40" ry="46"/>
+      </g>
+      <!-- arm holding cane -->
+      <path d="M292 196 L322 268 L346 300" stroke="#1b2a33" stroke-width="24" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M292 196 L322 268 L346 300" stroke="#dfe6eb" stroke-width="20" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <line x1="346" y1="300" x2="520" y2="508" stroke="#1b2a33" stroke-width="7" stroke-linecap="round"/>
+      <line x1="346" y1="300" x2="520" y2="508" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+      <line x1="496" y1="480" x2="520" y2="508" stroke="#c0392b" stroke-width="4" stroke-linecap="round"/>
+      <!-- phone in shirt pocket -->
+      <rect x="262" y="206" width="26" height="40" rx="4" fill="#1b2a33"/>
+      <rect x="258" y="226" width="34" height="24" rx="3" fill="#c7d2da" stroke="#1b2a33" stroke-width="1.5"/>
+      <!-- power bank in back pocket -->
+      <rect x="186" y="318" width="22" height="44" rx="5" fill="#eceff1" stroke="#1b2a33" stroke-width="2"/>
+      <circle cx="197" cy="330" r="2.5" fill="#2e9b57"/><circle cx="197" cy="338" r="2.5" fill="#2e9b57"/>
+      <!-- cable from cap to power bank -->
+      <path d="M286 86 C262 64 220 70 210 100 C204 130 206 150 206 180 C204 240 198 290 197 318" stroke="#2b2b2b" stroke-width="3" fill="none"/>
+      <!-- cap -->
+      <path d="M207 112 C205 60 295 56 294 108 Z" fill="#1d4f7a" stroke="#0f2b44" stroke-width="2"/>
+      <path d="M286 104 C312 102 334 108 342 116 L290 116 Z" fill="#163e60" stroke="#0f2b44" stroke-width="2"/>
+      <circle cx="250" cy="65" r="4" fill="#163e60"/>
+      <!-- camera unit, tilted down -->
+      <g transform="rotate(28 299 92)">
+        <rect x="282" y="81" width="34" height="22" rx="3" fill="#eceff1" stroke="#1b2a33" stroke-width="2"/>
+        <circle cx="316" cy="92" r="6" fill="#1b2a33"/><circle cx="316" cy="92" r="2.5" fill="#3d6a8f"/>
+      </g>
+      <!-- bone-conduction earphone -->
+      <path d="M236 132 C222 160 210 150 214 128" stroke="#37474f" stroke-width="4" fill="none"/>
+      <ellipse cx="242" cy="124" rx="7" ry="10" fill="#37474f"/>
+      <!-- wireless links -->
+      <path d="M300 112 C330 150 320 190 290 214" stroke="#1d4f7a" stroke-width="2.5" fill="none" stroke-dasharray="4 5"/>
+      <path d="M262 214 C238 190 236 160 242 136" stroke="#7b4bb7" stroke-width="2.5" fill="none" stroke-dasharray="4 5"/>
+      <!-- speech bubble -->
+      <rect x="20" y="40" width="168" height="54" rx="12" fill="#fff" stroke="#1b2a33" stroke-width="2"/>
+      <path d="M170 92 L210 116 L150 92 Z" fill="#fff" stroke="#1b2a33" stroke-width="2" stroke-linejoin="round"/>
+      <rect x="152" y="88" width="20" height="5" fill="#fff"/>
+      <text x="104" y="63" text-anchor="middle" font-family="Atkinson Hyperlegible, Arial" font-weight="700" font-size="16" fill="#1b2a33">“Chair ahead.</text>
+      <text x="104" y="83" text-anchor="middle" font-family="Atkinson Hyperlegible, Arial" font-weight="700" font-size="16" fill="#1b2a33">Move left.”</text>
+      <!-- numbered callouts -->
+      <g font-family="Atkinson Hyperlegible, Arial" font-weight="700" font-size="14" fill="#fff" text-anchor="middle">
+        <line x1="306" y1="78" x2="352" y2="40" stroke="#1d4f7a" stroke-width="1.5"/><circle cx="362" cy="34" r="12" fill="#1d4f7a"/><text x="362" y="39">1</text>
+        <line x1="210" y1="200" x2="150" y2="210" stroke="#1d4f7a" stroke-width="1.5"/><circle cx="138" cy="212" r="12" fill="#1d4f7a"/><text x="138" y="217">2</text>
+        <line x1="186" y1="340" x2="150" y2="340" stroke="#1d4f7a" stroke-width="1.5"/><circle cx="138" cy="340" r="12" fill="#1d4f7a"/><text x="138" y="345">3</text>
+        <line x1="292" y1="236" x2="380" y2="210" stroke="#1d4f7a" stroke-width="1.5"/><circle cx="392" cy="206" r="12" fill="#1d4f7a"/><text x="392" y="211">4</text>
+        <line x1="234" y1="124" x2="160" y2="150" stroke="#1d4f7a" stroke-width="1.5"/><circle cx="148" cy="154" r="12" fill="#1d4f7a"/><text x="148" y="159">5</text>
+        <line x1="440" y1="410" x2="470" y2="380" stroke="#1d4f7a" stroke-width="1.5"/><circle cx="480" cy="372" r="12" fill="#1d4f7a"/><text x="480" y="377">6</text>
+        <circle cx="610" cy="260" r="12" fill="#1d4f7a"/><text x="610" y="265">7</text>
+      </g>
+      <text x="330" y="168" font-family="JetBrains Mono, monospace" font-size="12" fill="#1d4f7a">Wi-Fi</text>
+      <text x="198" y="186" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="12" fill="#7b4bb7">Bluetooth</text>
+    </svg>
+    <figcaption>The finished system, side view. Drawn to scale for a user about 1.70 m tall (242 px = 1 m on the floor).</figcaption>
+  </figure>
+  <ul class="legend">
+    <li><b>1</b>Camera unit: ESP32-CAM in a small box, tilted 25–30° down</li>
+    <li><b>2</b>Power cable running from the cap, down the back</li>
+    <li><b>3</b>5 V power bank in a back pocket</li>
+    <li><b>4</b>Android phone running the navigation app</li>
+    <li><b>5</b>Bone-conduction earphones (ears stay open)</li>
+    <li><b>6</b>White cane, still used for the area right in front</li>
+    <li><b>7</b>Camera view: sees the floor from about 1.4 m ahead</li>
+  </ul>
+  <dl class="cover-meta">
+    <dt>Team</dt><dd>Aishwarya Kumar Telasinge · Anuja Sutar · Aishwarya Channashetti · Chandrika Bannimatti</dd>
+    <dt>Guide</dt><dd>Prof. Avanti Patil</dd>
+    <dt>Companion</dt><dd>SRS v1.0 (docs/SRS_Camera_Navigation.pdf)</dd>
+    <dt>Date</dt><dd>1 October 2026</dd>
+  </dl>
+</section>
+
+<!-- ======================================================= HOW IT WORKS -->
+<section class="page">
+  <h2>How the finished system works</h2>
+  <p>The cap camera does no thinking. It only streams video. All the AI runs on the phone, and the only output is speech.</p>
+  <figure class="frame">
+    <svg viewBox="0 0 900 250" role="img" aria-label="Data flow from cap camera to earphones">
+      <g font-family="Atkinson Hyperlegible, Arial" fill="#1b2a33">
+        <!-- cap unit -->
+        <rect x="10" y="60" width="150" height="120" rx="10" fill="#eef3f7" stroke="#1d4f7a" stroke-width="2"/>
+        <text x="85" y="88" text-anchor="middle" font-weight="700" font-size="15">Cap unit</text>
+        <text x="85" y="114" text-anchor="middle" font-size="12.5">OV3660 camera</text>
+        <text x="85" y="132" text-anchor="middle" font-size="12.5">ESP32-CAM</text>
+        <text x="85" y="150" text-anchor="middle" font-size="12.5">(+ MPU6050 tilt)</text>
+        <!-- arrow wifi -->
+        <line x1="160" y1="120" x2="222" y2="120" stroke="#1d4f7a" stroke-width="3"/>
+        <polygon points="222,113 234,120 222,127" fill="#1d4f7a"/>
+        <text x="197" y="108" text-anchor="middle" font-size="11.5" fill="#1d4f7a" font-family="JetBrains Mono, monospace">Wi-Fi</text>
+        <text x="197" y="142" text-anchor="middle" font-size="10" fill="#56626e" font-family="JetBrains Mono, monospace">MJPEG</text>
+        <!-- phone app -->
+        <rect x="236" y="20" width="510" height="210" rx="12" fill="#fff" stroke="#1b2a33" stroke-width="2"/>
+        <text x="491" y="44" text-anchor="middle" font-weight="700" font-size="15">Android app (all processing on the phone)</text>
+        <g font-size="12" text-anchor="middle">
+          <rect x="250" y="70" width="88" height="96" rx="8" fill="#f3f6f8" stroke="#90a4ae"/>
+          <text x="294" y="104" font-weight="700">Receive</text><text x="294" y="122">newest</text><text x="294" y="138">frame only</text>
+          <rect x="348" y="70" width="88" height="96" rx="8" fill="#f3f6f8" stroke="#90a4ae"/>
+          <text x="392" y="104" font-weight="700">Detect</text><text x="392" y="122">objects</text><text x="392" y="138">YOLOv8n</text>
+          <rect x="446" y="70" width="88" height="96" rx="8" fill="#f3f6f8" stroke="#90a4ae"/>
+          <text x="490" y="104" font-weight="700">Obstacles</text><text x="490" y="122">+ distance</text><text x="490" y="138">in metres</text>
+          <rect x="544" y="70" width="88" height="96" rx="8" fill="#f3f6f8" stroke="#90a4ae"/>
+          <text x="588" y="104" font-weight="700">Path</text><text x="588" y="122">left / centre</text><text x="588" y="138">/ right</text>
+          <rect x="642" y="70" width="92" height="96" rx="8" fill="#fff6d6" stroke="#c99a12"/>
+          <text x="688" y="104" font-weight="700">Decide</text><text x="688" y="122">direction +</text><text x="688" y="138">safety alert</text>
+        </g>
+        <g fill="#56626e"><polygon points="339,114 347,118 339,122"/><polygon points="437,114 445,118 437,122"/><polygon points="535,114 543,118 535,122"/><polygon points="633,114 641,118 633,122"/></g>
+        <text x="491" y="196" text-anchor="middle" font-size="12" fill="#56626e">Decision runs 10 times a second. A “Stop” interrupts any other speech.</text>
+        <!-- arrow bt -->
+        <line x1="746" y1="120" x2="790" y2="120" stroke="#7b4bb7" stroke-width="3"/>
+        <polygon points="790,113 802,120 790,127" fill="#7b4bb7"/>
+        <text x="772" y="108" text-anchor="middle" font-size="10.5" fill="#7b4bb7" font-family="JetBrains Mono, monospace">BT</text>
+        <!-- earphones -->
+        <rect x="804" y="60" width="88" height="120" rx="10" fill="#f4eefb" stroke="#7b4bb7" stroke-width="2"/>
+        <text x="848" y="96" text-anchor="middle" font-weight="700" font-size="14">Voice</text>
+        <text x="848" y="120" text-anchor="middle" font-size="11.5">earphones</text>
+        <text x="848" y="138" text-anchor="middle" font-size="11.5">or phone</text>
+        <text x="848" y="156" text-anchor="middle" font-size="11.5">speaker</text>
+      </g>
+    </svg>
+  </figure>
+  <h3>What the user hears</h3>
+  <table>
+    <thead><tr><th>Situation</th><th>Spoken instruction</th></tr></thead>
+    <tbody>
+      <tr><td>Something within 1.2 m straight ahead</td><td>“Stop. Chair ahead.”</td></tr>
+      <tr><td>Stairs within 4 m</td><td>“Caution. Stairs ahead.”</td></tr>
+      <tr><td>Something within 2.5 m, one side is clear</td><td>“Person ahead. Move left.”</td></tr>
+      <tr><td>All three directions blocked</td><td>“Path blocked. Stop and turn.”</td></tr>
+      <tr><td>Nothing nearby</td><td>“Path clear.” (at most every 6 s)</td></tr>
+      <tr><td>Camera switched off or out of range</td><td>“Camera disconnected. Please stop.”</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Software you need on the laptop</h3>
+  <table>
+    <thead><tr><th>Software</th><th>Used for</th><th>Cost</th></tr></thead>
+    <tbody>
+      <tr><td>Arduino IDE 2.x + “esp32 by Espressif Systems” board package</td><td>Flashing the ESP32-CAM firmware</td><td>Free</td></tr>
+      <tr><td>Android Studio (Kotlin)</td><td>Building the navigation app</td><td>Free</td></tr>
+      <tr><td>Python 3.11 + Ultralytics (already set up from Phase 2)</td><td>Exporting YOLOv8n to TensorFlow Lite for the phone</td><td>Free</td></tr>
+      <tr><td>Project firmware <code>esp32_cam_ap/esp32_cam_ap.ino</code></td><td>Camera hotspot and video stream (already written)</td><td>Done</td></tr>
+    </tbody>
+  </table>
+  <div class="note warn"><b>Safety.</b> The system supplements the white cane; it never replaces it. Keep the power bank in a pocket, never on the cap. Stop testing if the camera box gets hot.</div>
+</section>
+
+<!-- ======================================================= PARTS -->
+<section class="page">
+  <h2>Every part you need</h2>
+  <p><span class="tag have">HAVE</span> already in the project kit · <span class="tag buy">BUY</span> needed · <span class="tag opt">OPTIONAL</span> nice to have. Prices are approximate Indian online prices (Robu.in, Amazon.in) and vary by seller.</p>
+
+  <div class="cards">
+    <!-- 1 ESP32-CAM -->
+    <div class="card">
+      <svg viewBox="0 0 200 140" aria-hidden="true">
+        <rect x="66" y="32" width="68" height="102" rx="4" fill="#263238" stroke="#1b2a33" stroke-width="2"/>
+        <g fill="#e0c068"><circle cx="73" cy="44" r="2.6"/><circle cx="73" cy="56" r="2.6"/><circle cx="73" cy="68" r="2.6"/><circle cx="73" cy="80" r="2.6"/><circle cx="73" cy="92" r="2.6"/><circle cx="73" cy="104" r="2.6"/><circle cx="73" cy="116" r="2.6"/><circle cx="73" cy="128" r="2.6"/>
+        <circle cx="127" cy="44" r="2.6"/><circle cx="127" cy="56" r="2.6"/><circle cx="127" cy="68" r="2.6"/><circle cx="127" cy="80" r="2.6"/><circle cx="127" cy="92" r="2.6"/><circle cx="127" cy="104" r="2.6"/><circle cx="127" cy="116" r="2.6"/><circle cx="127" cy="128" r="2.6"/></g>
+        <rect x="81" y="82" width="38" height="46" rx="2" fill="#cfd8dc" stroke="#90a4ae"/>
+        <text x="100" y="108" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="7" fill="#37474f">ESP32-S</text>
+        <rect x="93" y="30" width="14" height="24" fill="#d9a441"/>
+        <rect x="84" y="6" width="32" height="30" rx="3" fill="#37474f" stroke="#1b2a33" stroke-width="2"/>
+        <circle cx="100" cy="21" r="10" fill="#111a1f" stroke="#78909c" stroke-width="2"/><circle cx="100" cy="21" r="4" fill="#3d6a8f"/><circle cx="97" cy="18" r="1.5" fill="#fff"/>
+        <rect x="84" y="62" width="8" height="6" fill="#fff8e1" stroke="#c9b37a"/>
+      </svg>
+      <div class="top"><span class="name">AI-Thinker ESP32-CAM (OV3660/OV2640)</span><span class="num">#1</span></div>
+      <div class="why">The camera on the cap. Makes its own Wi-Fi hotspot and streams video to the phone.</div>
+      <div class="foot"><span class="tag have">HAVE</span><span class="price">—</span></div>
+    </div>
+    <!-- 2 Phone -->
+    <div class="card">
+      <svg viewBox="0 0 200 140" aria-hidden="true">
+        <rect x="74" y="6" width="52" height="128" rx="9" fill="#1b2a33"/>
+        <rect x="78" y="16" width="44" height="108" rx="4" fill="#e8f0f7"/>
+        <circle cx="100" cy="11" r="2" fill="#56626e"/>
+        <circle cx="100" cy="66" r="17" fill="#1d4f7a"/>
+        <text x="100" y="69" text-anchor="middle" font-family="Atkinson Hyperlegible, Arial" font-weight="700" font-size="7.5" fill="#fff">START</text>
+        <rect x="84" y="96" width="32" height="4" rx="2" fill="#b0bec5"/><rect x="84" y="104" width="24" height="4" rx="2" fill="#b0bec5"/>
+      </svg>
+      <div class="top"><span class="name">Android phone</span><span class="num">#2</span></div>
+      <div class="why">Runs the app. Android 10 or later, 4 GB RAM or more, mid-range chip. Use a team member’s phone.</div>
+      <div class="foot"><span class="tag have">HAVE</span><span class="price">—</span></div>
+    </div>
+    <!-- 3 Laptop -->
+    <div class="card">
+      <svg viewBox="0 0 200 140" aria-hidden="true">
+        <rect x="40" y="18" width="120" height="78" rx="5" fill="#1b2a33"/>
+        <rect x="46" y="24" width="108" height="66" fill="#e8f0f7"/>
+        <g><rect x="52" y="32" width="40" height="4" fill="#1d4f7a"/><rect x="58" y="42" width="60" height="4" fill="#90a4ae"/><rect x="58" y="52" width="48" height="4" fill="#90a4ae"/><rect x="58" y="62" width="70" height="4" fill="#e0a526"/><rect x="52" y="72" width="30" height="4" fill="#1d4f7a"/></g>
+        <path d="M24 100 H176 L166 116 H34 Z" fill="#cfd8dc" stroke="#90a4ae" stroke-width="2"/>
+      </svg>
+      <div class="top"><span class="name">Laptop</span><span class="num">#3</span></div>
+      <div class="why">For flashing the camera firmware and building the Android app. Your Phase-2 machine is fine.</div>
+      <div class="foot"><span class="tag have">HAVE</span><span class="price">—</span></div>
+    </div>
+    <!-- 4 MB programmer -->
+    <div class="card">
+      <svg viewBox="0 0 200 140" aria-hidden="true">
+        <rect x="56" y="14" width="88" height="112" rx="4" fill="#263238" stroke="#1b2a33" stroke-width="2"/>
+        <rect x="64" y="22" width="10" height="84" fill="#111"/><rect x="126" y="22" width="10" height="84" fill="#111"/>
+        <g fill="#555"><rect x="67" y="26" width="4" height="4"/><rect x="67" y="36" width="4" height="4"/><rect x="67" y="46" width="4" height="4"/><rect x="67" y="56" width="4" height="4"/><rect x="67" y="66" width="4" height="4"/><rect x="67" y="76" width="4" height="4"/><rect x="67" y="86" width="4" height="4"/><rect x="67" y="96" width="4" height="4"/>
+        <rect x="129" y="26" width="4" height="4"/><rect x="129" y="36" width="4" height="4"/><rect x="129" y="46" width="4" height="4"/><rect x="129" y="56" width="4" height="4"/><rect x="129" y="66" width="4" height="4"/><rect x="129" y="76" width="4" height="4"/><rect x="129" y="86" width="4" height="4"/><rect x="129" y="96" width="4" height="4"/></g>
+        <rect x="88" y="46" width="24" height="16" fill="#111"/>
+        <text x="100" y="74" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="6.5" fill="#cfd8dc">CH340</text>
+        <rect x="80" y="86" width="12" height="12" rx="2" fill="#cfd8dc"/><circle cx="86" cy="92" r="3" fill="#444"/>
+        <rect x="108" y="86" width="12" height="12" rx="2" fill="#cfd8dc"/><circle cx="114" cy="92" r="3" fill="#444"/>
+        <text x="86" y="108" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="6" fill="#cfd8dc">IO0</text>
+        <text x="114" y="108" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="6" fill="#cfd8dc">RST</text>
+        <rect x="88" y="120" width="24" height="12" rx="2" fill="#cfd8dc" stroke="#90a4ae"/>
+      </svg>
+      <div class="top"><span class="name">ESP32-CAM-MB programmer</span><span class="num">#4</span></div>
+      <div class="why">The camera clips onto it to upload firmware over micro-USB. Used on the desk only. Skip if you already have one or an FTDI adapter.</div>
+      <div class="foot"><span class="tag buy">BUY</span><span class="price">₹150–250</span></div>
+    </div>
+    <!-- 5 Power bank -->
+    <div class="card">
+      <svg viewBox="0 0 200 140" aria-hidden="true">
+        <rect x="30" y="40" width="140" height="62" rx="12" fill="#eceff1" stroke="#1b2a33" stroke-width="2"/>
+        <circle cx="56" cy="84" r="3.5" fill="#2e9b57"/><circle cx="68" cy="84" r="3.5" fill="#2e9b57"/><circle cx="80" cy="84" r="3.5" fill="#2e9b57"/><circle cx="92" cy="84" r="3.5" fill="#cfd8dc"/>
+        <rect x="164" y="60" width="10" height="22" rx="2" fill="#90a4ae"/>
+        <text x="96" y="64" text-anchor="middle" font-family="Atkinson Hyperlegible, Arial" font-weight="700" font-size="13" fill="#1b2a33">5000 mAh</text>
+      </svg>
+      <div class="top"><span class="name">Slim power bank, 5000 mAh, 5 V / 2 A</span><span class="num">#5</span></div>
+      <div class="why">Powers the camera from a pocket. Keeps the battery off the user’s head. Runs the camera for 8+ hours.</div>
+      <div class="foot"><span class="tag buy">BUY</span><span class="price">₹600–1,000</span></div>
+    </div>
+    <!-- 6 USB to dupont -->
+    <div class="card">
+      <svg viewBox="0 0 200 140" aria-hidden="true">
+        <rect x="12" y="60" width="28" height="20" rx="2" fill="#cfd8dc" stroke="#90a4ae" stroke-width="2"/>
+        <rect x="40" y="57" width="20" height="26" rx="4" fill="#2b2b2b"/>
+        <path d="M60 70 C90 70 80 112 112 108 C140 104 130 60 150 58" stroke="#2b2b2b" stroke-width="5" fill="none"/>
+        <path d="M150 58 L166 42" stroke="#d64545" stroke-width="3.5"/><path d="M150 58 L166 76" stroke="#2b2b2b" stroke-width="3.5"/>
+        <rect x="164" y="34" width="22" height="12" rx="1" fill="#111"/><rect x="164" y="70" width="22" height="12" rx="1" fill="#111"/>
+        <text x="190" y="30" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="8" fill="#d64545">5V</text>
+        <text x="190" y="96" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="8" fill="#1b2a33">GND</text>
+      </svg>
+      <div class="top"><span class="name">USB-A to 2-pin DuPont power cable, 1–1.2 m</span><span class="num">#6</span></div>
+      <div class="why">Carries 5 V from the power bank up to the camera’s 5V and GND pins. Choose a thick cable.</div>
+      <div class="foot"><span class="tag buy">BUY</span><span class="price">₹80–200</span></div>
+    </div>
+    <!-- 7 capacitor -->
+    <div class="card">
+      <svg viewBox="0 0 200 140" aria-hidden="true">
+        <line x1="90" y1="96" x2="90" y2="134" stroke="#90a4ae" stroke-width="3"/>
+        <line x1="110" y1="96" x2="110" y2="124" stroke="#90a4ae" stroke-width="3"/>
+        <rect x="78" y="22" width="44" height="76" rx="7" fill="#1e3f73" stroke="#0f2b44" stroke-width="2"/>
+        <rect x="108" y="22" width="9" height="76" fill="#b0bec5"/>
+        <text x="112.5" y="50" text-anchor="middle" font-size="10" font-weight="700" fill="#1e3f73">−</text>
+        <text x="112.5" y="78" text-anchor="middle" font-size="10" font-weight="700" fill="#1e3f73">−</text>
+        <text x="93" y="64" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="8" fill="#fff" transform="rotate(-90 93 60)">1000µF</text>
+        <text x="80" y="132" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="8" fill="#56626e">+ long leg</text>
+      </svg>
+      <div class="top"><span class="name">1000 µF 10–16 V capacitor</span><span class="num">#7</span></div>
+      <div class="why">Soldered across 5V and GND at the camera. Stops the ESP32-CAM rebooting when Wi-Fi draws a burst of current.</div>
+      <div class="foot"><span class="tag buy">BUY</span><span class="price">₹10–30</span></div>
+    </div>
+    <!-- 8 MPU6050 -->
+    <div class="card">
+      <svg viewBox="0 0 200 140" aria-hidden="true">
+        <rect x="50" y="30" width="100" height="84" rx="4" fill="#1e5aa8" stroke="#123d73" stroke-width="2"/>
+        <g fill="#f2d27a" stroke="#8a6d1d"><circle cx="60" cy="42" r="3"/><circle cx="71" cy="42" r="3"/><circle cx="82" cy="42" r="3"/><circle cx="93" cy="42" r="3"/><circle cx="104" cy="42" r="3"/><circle cx="115" cy="42" r="3"/><circle cx="126" cy="42" r="3"/><circle cx="137" cy="42" r="3"/></g>
+        <g font-family="JetBrains Mono, monospace" font-size="4.6" fill="#fff" text-anchor="middle"><text x="60" y="53">VCC</text><text x="71" y="53">GND</text><text x="82" y="53">SCL</text><text x="93" y="53">SDA</text><text x="104" y="53">XDA</text><text x="115" y="53">XCL</text><text x="126" y="53">AD0</text><text x="137" y="53">INT</text></g>
+        <rect x="86" y="68" width="28" height="28" fill="#111"/>
+        <circle cx="58" cy="106" r="4" fill="#fff" stroke="#123d73"/><circle cx="142" cy="106" r="4" fill="#fff" stroke="#123d73"/>
+      </svg>
+      <div class="top"><span class="name">MPU6050 tilt sensor (GY-521)</span><span class="num">#8</span></div>
+      <div class="why">Measures how far the head is tilted, so the app can work out distance along the floor more accurately.</div>
+      <div class="foot"><span class="tag buy">BUY</span><span class="price">₹120–250</span></div>
+    </div>
+    <!-- 9 Jumper wires -->
+    <div class="card">
+      <svg viewBox="0 0 200 140" aria-hidden="true">
+        <g fill="none" stroke-width="3.5">
+          <path d="M40 32 C90 10 110 60 160 36" stroke="#d64545"/>
+          <path d="M40 56 C90 34 110 84 160 60" stroke="#2b2b2b"/>
+          <path d="M40 80 C90 58 110 108 160 84" stroke="#e7b416"/>
+          <path d="M40 104 C90 82 110 132 160 108" stroke="#2e9b57"/>
+        </g>
+        <g fill="#111"><rect x="22" y="26" width="20" height="11"/><rect x="22" y="50" width="20" height="11"/><rect x="22" y="74" width="20" height="11"/><rect x="22" y="98" width="20" height="11"/>
+        <rect x="158" y="30" width="20" height="11"/><rect x="158" y="54" width="20" height="11"/><rect x="158" y="78" width="20" height="11"/><rect x="158" y="102" width="20" height="11"/></g>
+      </svg>
+      <div class="top"><span class="name">Female-to-female jumper wires, 10 cm (set)</span><span class="num">#9</span></div>
+      <div class="why">Connects the MPU6050 to the camera board: red, black, yellow, green.</div>
+      <div class="foot"><span class="tag buy">BUY</span><span class="price">₹50–100</span></div>
+    </div>
+    <!-- 10 Cap -->
+    <div class="card">
+      <svg viewBox="0 0 200 140" aria-hidden="true">
+        <path d="M34 104 C32 34 156 26 158 98 Z" fill="#1d4f7a" stroke="#0f2b44" stroke-width="2"/>
+        <path d="M150 94 C176 94 192 102 194 112 L150 110 Z" fill="#163e60" stroke="#0f2b44" stroke-width="2"/>
+        <path d="M96 34 C70 50 64 80 66 102" stroke="#2f6a9b" stroke-width="2" fill="none"/>
+        <path d="M96 34 C122 50 128 80 124 100" stroke="#2f6a9b" stroke-width="2" fill="none"/>
+        <circle cx="96" cy="34" r="4" fill="#163e60"/>
+        <rect x="132" y="70" width="22" height="16" rx="2" fill="none" stroke="#f2c230" stroke-width="2" stroke-dasharray="3 2"/>
+        <text x="143" y="64" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="7" fill="#f2c230">mount</text>
+      </svg>
+      <div class="top"><span class="name">Baseball cap with a stiff front panel</span><span class="num">#10</span></div>
+      <div class="why">The stiff front keeps the camera angle steady while walking. Avoid soft or unstructured caps.</div>
+      <div class="foot"><span class="tag buy">BUY</span><span class="price">₹200–400</span></div>
+    </div>
+    <!-- 11 Enclosure -->
+    <div class="card">
+      <svg viewBox="0 0 200 140" aria-hidden="true">
+        <path d="M50 58 H140 V120 H50 Z" fill="#eceff1" stroke="#1b2a33" stroke-width="2"/>
+        <path d="M50 58 L72 38 H162 L140 58 Z" fill="#f7f9fa" stroke="#1b2a33" stroke-width="2"/>
+        <path d="M140 58 L162 38 V100 L140 120 Z" fill="#cfd8dc" stroke="#1b2a33" stroke-width="2"/>
+        <circle cx="95" cy="86" r="11" fill="#1b2a33"/><circle cx="95" cy="86" r="4" fill="#3d6a8f"/>
+        <g stroke="#90a4ae" stroke-width="2"><line x1="86" y1="46" x2="112" y2="46"/><line x1="92" y1="51" x2="118" y2="51"/><line x1="98" y1="42" x2="124" y2="42"/></g>
+        <text x="100" y="135" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="8" fill="#56626e">≈ 60 × 45 × 25 mm</text>
+      </svg>
+      <div class="top"><span class="name">Small ABS box or 3D-printed case</span><span class="num">#11</span></div>
+      <div class="why">Holds the camera board and tilt sensor. Needs a lens hole at the front and air slots on top.</div>
+      <div class="foot"><span class="tag buy">BUY</span><span class="price">₹100–300</span></div>
+    </div>
+    <!-- 12 Earphones -->
+    <div class="card">
+      <svg viewBox="0 0 200 140" aria-hidden="true">
+        <path d="M54 62 C50 136 150 136 146 62" stroke="#1b2a33" stroke-width="6" fill="none"/>
+        <ellipse cx="54" cy="52" rx="13" ry="20" fill="#37474f" stroke="#1b2a33" stroke-width="2"/>
+        <ellipse cx="146" cy="52" rx="13" ry="20" fill="#37474f" stroke="#1b2a33" stroke-width="2"/>
+        <circle cx="146" cy="52" r="4" fill="#7b4bb7"/>
+      </svg>
+      <div class="top"><span class="name">Bluetooth earphones, bone-conduction preferred</span><span class="num">#12</span></div>
+      <div class="why">Plays the spoken instructions. Bone-conduction leaves the ears open to traffic and voices. Ordinary earbuds work for testing.</div>
+      <div class="foot"><span class="tag buy">BUY</span><span class="price">₹800–3,500</span></div>
+    </div>
+    <!-- 13 Velcro and tape -->
+    <div class="card">
+      <svg viewBox="0 0 200 140" aria-hidden="true">
+        <defs><pattern id="hook" width="6" height="6" patternUnits="userSpaceOnUse"><rect width="6" height="6" fill="#37474f"/><circle cx="3" cy="3" r="1.3" fill="#78909c"/></pattern></defs>
+        <rect x="26" y="30" width="110" height="26" rx="3" fill="url(#hook)" transform="rotate(-8 81 43)"/>
+        <rect x="60" y="84" width="118" height="22" rx="3" fill="#fafafa" stroke="#b0bec5" stroke-width="2" transform="rotate(6 119 95)"/>
+        <rect x="60" y="84" width="118" height="6" fill="#d64545" transform="rotate(6 119 95)"/>
+      </svg>
+      <div class="top"><span class="name">Velcro strips + double-sided foam tape</span><span class="num">#13</span></div>
+      <div class="why">Velcro lets you take the camera box off the cap. Foam tape fixes the boards inside the box.</div>
+      <div class="foot"><span class="tag buy">BUY</span><span class="price">₹100–200</span></div>
+    </div>
+    <!-- 14 Cable clips -->
+    <div class="card">
+      <svg viewBox="0 0 200 140" aria-hidden="true">
+        <g fill="none" stroke="#1b2a33" stroke-width="5" stroke-linecap="round">
+          <path d="M40 90 V60 A14 14 0 0 1 68 60 V90"/><path d="M86 90 V60 A14 14 0 0 1 114 60 V90"/><path d="M132 90 V60 A14 14 0 0 1 160 60 V90"/>
+        </g>
+        <line x1="20" y1="66" x2="180" y2="66" stroke="#2b2b2b" stroke-width="3" stroke-dasharray="1 0"/>
+        <g fill="#cfd8dc" stroke="#90a4ae"><rect x="32" y="90" width="44" height="8" rx="2"/><rect x="78" y="90" width="44" height="8" rx="2"/><rect x="124" y="90" width="44" height="8" rx="2"/></g>
+      </svg>
+      <div class="top"><span class="name">Small adhesive cable clips (pack)</span><span class="num">#14</span></div>
+      <div class="why">Keeps the power cable flat along the cap and collar so it doesn’t pull on the camera.</div>
+      <div class="foot"><span class="tag buy">BUY</span><span class="price">₹50–100</span></div>
+    </div>
+    <!-- 15 Heatsink -->
+    <div class="card">
+      <svg viewBox="0 0 200 140" aria-hidden="true">
+        <rect x="56" y="92" width="88" height="14" fill="#b0bec5" stroke="#78909c" stroke-width="2"/>
+        <g fill="#cfd8dc" stroke="#78909c" stroke-width="2"><rect x="60" y="40" width="9" height="52"/><rect x="76" y="40" width="9" height="52"/><rect x="92" y="40" width="9" height="52"/><rect x="108" y="40" width="9" height="52"/><rect x="124" y="40" width="9" height="52"/></g>
+        <rect x="56" y="106" width="88" height="5" fill="#ffffff" stroke="#90a4ae"/>
+      </svg>
+      <div class="top"><span class="name">Stick-on aluminium heatsink, ~14 mm</span><span class="num">#15</span></div>
+      <div class="why">Sits on the ESP32-S metal shield. The board gets warm when streaming and it sits on the user’s head.</div>
+      <div class="foot"><span class="tag opt">OPTIONAL</span><span class="price">₹30–80</span></div>
+    </div>
+    <!-- 16 Wide lens -->
+    <div class="card">
+      <svg viewBox="0 0 200 140" aria-hidden="true">
+        <rect x="70" y="18" width="60" height="52" rx="4" fill="#37474f" stroke="#1b2a33" stroke-width="2"/>
+        <path d="M78 46 A22 22 0 0 1 122 46 Z" fill="#111a1f" stroke="#78909c" stroke-width="2"/>
+        <ellipse cx="100" cy="40" rx="9" ry="5" fill="#3d6a8f"/>
+        <path d="M92 70 V120 Q92 130 102 130 H150" stroke="#d9a441" stroke-width="12" fill="none"/>
+      </svg>
+      <div class="top"><span class="name">Wide-angle OV2640 module, 120–160°</span><span class="num">#16</span></div>
+      <div class="why">Only if the standard lens misses obstacles at the sides. The app’s field-of-view setting must be changed to match.</div>
+      <div class="foot"><span class="tag opt">OPTIONAL</span><span class="price">₹250–450</span></div>
+    </div>
+    <!-- 17 Spare dev board -->
+    <div class="card">
+      <svg viewBox="0 0 200 140" aria-hidden="true">
+        <rect x="40" y="38" width="120" height="58" rx="4" fill="#263238" stroke="#1b2a33" stroke-width="2"/>
+        <rect x="88" y="46" width="44" height="40" rx="2" fill="#cfd8dc" stroke="#90a4ae"/>
+        <rect x="40" y="58" width="12" height="16" fill="#cfd8dc"/>
+        <g fill="#e0c068"><circle cx="54" cy="42" r="2"/><circle cx="64" cy="42" r="2"/><circle cx="74" cy="42" r="2"/><circle cx="54" cy="92" r="2"/><circle cx="64" cy="92" r="2"/><circle cx="74" cy="92" r="2"/><circle cx="140" cy="42" r="2"/><circle cx="150" cy="42" r="2"/><circle cx="140" cy="92" r="2"/><circle cx="150" cy="92" r="2"/></g>
+        <text x="100" y="118" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="8" fill="#56626e">ESP32 Dev Module</text>
+      </svg>
+      <div class="top"><span class="name">ESP32 Dev Module (old BLE beacon)</span><span class="num">#17</span></div>
+      <div class="why">Not needed in the new design. Keep it as a spare for testing.</div>
+      <div class="foot"><span class="tag have">HAVE</span><span class="price">—</span></div>
+    </div>
+    <!-- 18 VL53L1X -->
+    <div class="card">
+      <svg viewBox="0 0 200 140" aria-hidden="true">
+        <rect x="62" y="36" width="76" height="62" rx="4" fill="#5b2f86" stroke="#3b1d58" stroke-width="2"/>
+        <rect x="88" y="54" width="24" height="16" rx="2" fill="#111"/>
+        <circle cx="94" cy="62" r="3" fill="#3d6a8f"/><circle cx="106" cy="62" r="3" fill="#3d6a8f"/>
+        <g fill="#f2d27a"><circle cx="72" cy="90" r="2.5"/><circle cx="82" cy="90" r="2.5"/><circle cx="92" cy="90" r="2.5"/><circle cx="102" cy="90" r="2.5"/><circle cx="112" cy="90" r="2.5"/><circle cx="122" cy="90" r="2.5"/></g>
+      </svg>
+      <div class="top"><span class="name">VL53L1X distance sensor (4 m)</span><span class="num">#18</span></div>
+      <div class="why">A laser range reading straight ahead that catches plain walls. Adds firmware work. Only if time allows.</div>
+      <div class="foot"><span class="tag opt">OPTIONAL</span><span class="price">₹600–1,000</span></div>
+    </div>
+  </div>
+
+  <h3>Tools (borrow from the lab)</h3>
+  <div class="cards">
+    <div class="card">
+      <svg viewBox="0 0 200 90" aria-hidden="true">
+        <rect x="24" y="36" width="70" height="18" rx="9" fill="#e0a526" stroke="#8a6d1d" stroke-width="2"/>
+        <line x1="94" y1="45" x2="160" y2="45" stroke="#78909c" stroke-width="5"/>
+        <path d="M160 41 L176 45 L160 49 Z" fill="#78909c"/>
+        <rect x="18" y="58" width="164" height="3" fill="none"/>
+        <path d="M30 70 L90 70" stroke="#c0392b" stroke-width="4"/><circle cx="96" cy="70" r="7" fill="none" stroke="#56626e" stroke-width="3"/><path d="M103 70 H170" stroke="#56626e" stroke-width="3"/>
+      </svg>
+      <div class="name">Soldering iron, solder, small screwdriver</div>
+      <div class="why">For the capacitor and the power-cable joint.</div>
+    </div>
+    <div class="card">
+      <svg viewBox="0 0 200 90" aria-hidden="true">
+        <path d="M40 30 H130 L146 40 V52 H40 Z" fill="#37474f" stroke="#1b2a33" stroke-width="2"/>
+        <path d="M70 52 L62 82 H84 L92 52 Z" fill="#37474f" stroke="#1b2a33" stroke-width="2"/>
+        <rect x="146" y="42" width="24" height="6" fill="#f2c230"/><rect x="20" y="36" width="20" height="10" fill="#eceff1" stroke="#90a4ae"/>
+      </svg>
+      <div class="name">Hot-glue gun + craft knife or hand drill</div>
+      <div class="why">For the lens hole, air slots and fixing the wedge.</div>
+    </div>
+    <div class="card">
+      <svg viewBox="0 0 200 90" aria-hidden="true">
+        <rect x="66" y="8" width="68" height="78" rx="8" fill="#f2c230" stroke="#8a6d1d" stroke-width="2"/>
+        <rect x="76" y="16" width="48" height="20" rx="2" fill="#dbe7c9" stroke="#56626e"/>
+        <text x="100" y="31" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" fill="#1b2a33">5.02</text>
+        <circle cx="100" cy="58" r="13" fill="#37474f"/><line x1="100" y1="58" x2="108" y2="50" stroke="#fff" stroke-width="2"/>
+      </svg>
+      <div class="name">Multimeter</div>
+      <div class="why">To check 5 V reaches the board and the polarity is right.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================= COST -->
+<section class="page">
+  <h2>Shopping list and budget</h2>
+  <table>
+    <thead><tr><th>#</th><th>Item</th><th class="r">Qty</th><th class="r">Approx. ₹</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>AI-Thinker ESP32-CAM</td><td class="r">1</td><td class="r">—</td><td><span class="tag have">HAVE</span></td></tr>
+      <tr><td>2</td><td>Android phone</td><td class="r">1</td><td class="r">—</td><td><span class="tag have">HAVE</span></td></tr>
+      <tr><td>3</td><td>Laptop</td><td class="r">1</td><td class="r">—</td><td><span class="tag have">HAVE</span></td></tr>
+      <tr><td>4</td><td>ESP32-CAM-MB programmer</td><td class="r">1</td><td class="r">150–250</td><td><span class="tag buy">BUY</span></td></tr>
+      <tr><td>5</td><td>Slim power bank 5000 mAh</td><td class="r">1</td><td class="r">600–1,000</td><td><span class="tag buy">BUY</span></td></tr>
+      <tr><td>6</td><td>USB-A to 2-pin DuPont power cable</td><td class="r">1</td><td class="r">80–200</td><td><span class="tag buy">BUY</span></td></tr>
+      <tr><td>7</td><td>1000 µF capacitor</td><td class="r">2</td><td class="r">10–30</td><td><span class="tag buy">BUY</span></td></tr>
+      <tr><td>8</td><td>MPU6050 (GY-521)</td><td class="r">1</td><td class="r">120–250</td><td><span class="tag buy">BUY</span></td></tr>
+      <tr><td>9</td><td>Female-female jumper wires</td><td class="r">1 set</td><td class="r">50–100</td><td><span class="tag buy">BUY</span></td></tr>
+      <tr><td>10</td><td>Baseball cap, stiff front</td><td class="r">1</td><td class="r">200–400</td><td><span class="tag buy">BUY</span></td></tr>
+      <tr><td>11</td><td>Small ABS box or 3D-printed case</td><td class="r">1</td><td class="r">100–300</td><td><span class="tag buy">BUY</span></td></tr>
+      <tr><td>12</td><td>Bluetooth earphones</td><td class="r">1</td><td class="r">800–3,500</td><td><span class="tag buy">BUY</span></td></tr>
+      <tr><td>13</td><td>Velcro + foam tape</td><td class="r">1</td><td class="r">100–200</td><td><span class="tag buy">BUY</span></td></tr>
+      <tr><td>14</td><td>Adhesive cable clips</td><td class="r">1 pack</td><td class="r">50–100</td><td><span class="tag buy">BUY</span></td></tr>
+      <tr><td>15</td><td>Stick-on heatsink</td><td class="r">1</td><td class="r">30–80</td><td><span class="tag opt">OPTIONAL</span></td></tr>
+      <tr><td>16</td><td>Wide-angle camera module</td><td class="r">1</td><td class="r">250–450</td><td><span class="tag opt">OPTIONAL</span></td></tr>
+      <tr><td>17</td><td>ESP32 Dev Module</td><td class="r">1</td><td class="r">—</td><td><span class="tag have">HAVE</span></td></tr>
+      <tr><td>18</td><td>VL53L1X distance sensor</td><td class="r">1</td><td class="r">600–1,000</td><td><span class="tag opt">OPTIONAL</span></td></tr>
+    </tbody>
+    <tfoot>
+      <tr><td></td><td>Required items (#4–#14)</td><td></td><td class="r">2,260–6,330</td><td></td></tr>
+      <tr><td></td><td>With all optional items</td><td></td><td class="r">3,140–7,860</td><td></td></tr>
+    </tfoot>
+  </table>
+  <p>Most of the range comes from the earphones. With ordinary ₹800 Bluetooth earbuds the required items cost about ₹2,300–3,600.</p>
+  <div class="note"><b>Alternative camera board.</b> If the ESP32-CAM keeps rebooting or the cap feels too heavy, swap it for a <b>Seeed XIAO ESP32S3 Sense</b> (₹1,400–1,800). It is thumb-sized, has USB-C, and can run from a small LiPo battery. Then you can skip items #4, #6 and #7. Only the camera pin map in the firmware changes.</div>
+</section>
+
+<!-- ======================================================= WIRING -->
+<section class="page">
+  <h2>Wiring diagram</h2>
+  <p>Front view of the ESP32-CAM, camera at the top. The camera board is <b>not</b> on the MB programmer here; the MB is only used on the desk for flashing.</p>
+  <figure class="frame">
+    <svg viewBox="0 0 900 430" role="img" aria-label="Wiring of power cable, capacitor and MPU6050 to the ESP32-CAM">
+      <g font-family="JetBrains Mono, monospace" font-size="13">
+        <!-- ESP32-CAM -->
+        <rect x="300" y="60" width="230" height="300" rx="8" fill="#263238" stroke="#1b2a33" stroke-width="2"/>
+        <rect x="378" y="16" width="74" height="60" rx="5" fill="#37474f" stroke="#1b2a33" stroke-width="2"/>
+        <circle cx="415" cy="46" r="20" fill="#111a1f" stroke="#78909c" stroke-width="3"/><circle cx="415" cy="46" r="8" fill="#3d6a8f"/>
+        <rect x="380" y="200" width="70" height="140" rx="3" fill="#cfd8dc" stroke="#90a4ae"/>
+        <text x="415" y="275" text-anchor="middle" fill="#37474f" font-size="12">ESP32-S</text>
+        <!-- left pins -->
+        <g fill="#e0c068"><circle cx="318" cy="100" r="5"/><circle cx="318" cy="132" r="5"/><circle cx="318" cy="164" r="5"/><circle cx="318" cy="196" r="5"/><circle cx="318" cy="228" r="5"/><circle cx="318" cy="260" r="5"/><circle cx="318" cy="292" r="5"/><circle cx="318" cy="324" r="5"/></g>
+        <g fill="#cfd8dc" text-anchor="start" font-size="11"><text x="328" y="104">5V</text><text x="328" y="136">GND</text><text x="328" y="168">IO12</text><text x="328" y="200">IO13</text><text x="328" y="232">IO15</text><text x="328" y="264">IO14</text><text x="328" y="296">IO2</text><text x="328" y="328">IO4</text></g>
+        <!-- right pins -->
+        <g fill="#e0c068"><circle cx="512" cy="100" r="5"/><circle cx="512" cy="132" r="5"/><circle cx="512" cy="164" r="5"/><circle cx="512" cy="196" r="5"/><circle cx="512" cy="228" r="5"/><circle cx="512" cy="260" r="5"/><circle cx="512" cy="292" r="5"/><circle cx="512" cy="324" r="5"/></g>
+        <g fill="#cfd8dc" text-anchor="end" font-size="11"><text x="502" y="104">3V3</text><text x="502" y="136">IO16</text><text x="502" y="168">IO0</text><text x="502" y="200">GND</text><text x="502" y="232">VCC</text><text x="502" y="264">U0R</text><text x="502" y="296">U0T</text><text x="502" y="328">GND</text></g>
+
+        <!-- power bank + cable -->
+        <rect x="16" y="150" width="120" height="58" rx="12" fill="#eceff1" stroke="#1b2a33" stroke-width="2"/>
+        <text x="76" y="184" text-anchor="middle" fill="#1b2a33" font-size="12">Power bank</text>
+        <rect x="136" y="170" width="18" height="18" fill="#90a4ae"/>
+        <path d="M154 179 H190" stroke="#2b2b2b" stroke-width="6"/>
+        <path d="M190 179 C215 179 220 100 250 100 H318" stroke="#d64545" stroke-width="4" fill="none"/>
+        <path d="M190 179 C215 179 220 132 250 132 H318" stroke="#2b2b2b" stroke-width="4" fill="none"/>
+        <text x="200" y="92" fill="#d64545" font-size="12">red 5V</text>
+        <text x="160" y="232" fill="#1b2a33" font-size="12">black GND</text>
+        <!-- capacitor across 5V and GND -->
+        <rect x="262" y="104" width="16" height="24" rx="3" fill="#1e3f73" stroke="#0f2b44"/>
+        <rect x="273" y="104" width="5" height="24" fill="#b0bec5"/>
+        <text x="270" y="122" text-anchor="middle" fill="#fff" font-size="9">+</text>
+        <text x="196" y="58" fill="#1e3f73" font-size="11.5">1000 µF across 5V–GND</text>
+        <line x1="270" y1="64" x2="270" y2="102" stroke="#1e3f73" stroke-width="1.2" stroke-dasharray="3 3"/>
+
+        <!-- MPU6050 -->
+        <rect x="660" y="110" width="150" height="200" rx="6" fill="#1e5aa8" stroke="#123d73" stroke-width="2"/>
+        <rect x="716" y="190" width="40" height="40" fill="#111"/>
+        <text x="736" y="290" text-anchor="middle" fill="#fff" font-size="12">MPU6050</text>
+        <g fill="#f2d27a" stroke="#8a6d1d"><circle cx="672" cy="132" r="5"/><circle cx="672" cy="154" r="5"/><circle cx="672" cy="176" r="5"/><circle cx="672" cy="198" r="5"/><circle cx="672" cy="220" r="5"/><circle cx="672" cy="242" r="5"/><circle cx="672" cy="264" r="5"/></g>
+        <g fill="#fff" font-size="11"><text x="682" y="136">VCC</text><text x="682" y="158">GND</text><text x="682" y="180">SCL</text><text x="682" y="202">SDA</text><text x="682" y="224">XDA</text><text x="682" y="246">XCL</text><text x="682" y="268">AD0</text></g>
+
+        <!-- wires to MPU -->
+        <path d="M512 100 H560 V132 H672" stroke="#d64545" stroke-width="4" fill="none"/>
+        <path d="M512 196 H580 V154 H672" stroke="#2b2b2b" stroke-width="4" fill="none"/>
+        <path d="M318 260 H284 V392 H620 V176 H672" stroke="#e7b416" stroke-width="4" fill="none"/>
+        <path d="M318 228 H270 V408 H640 V198 H672" stroke="#2e9b57" stroke-width="4" fill="none"/>
+        <text x="536" y="92" fill="#d64545" font-size="11.5">3V3 → VCC</text>
+        <text x="540" y="214" fill="#1b2a33" font-size="11.5">GND → GND</text>
+        <text x="420" y="386" fill="#9a7a0c" font-size="11.5">IO14 → SCL</text>
+        <text x="420" y="424" fill="#2e7d4f" font-size="11.5">IO15 → SDA</text>
+      </g>
+    </svg>
+  </figure>
+  <table>
+    <thead><tr><th>From</th><th>To</th><th>Wire</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td>Power cable red</td><td>ESP32-CAM <b>5V</b></td><td>Red</td><td>Power in from the power bank</td></tr>
+      <tr><td>Power cable black</td><td>ESP32-CAM <b>GND</b> (left side)</td><td>Black</td><td>Ground</td></tr>
+      <tr><td>Capacitor + (long leg)</td><td>ESP32-CAM <b>5V</b></td><td>Solder</td><td>Smooths current bursts</td></tr>
+      <tr><td>Capacitor − (striped side)</td><td>ESP32-CAM <b>GND</b></td><td>Solder</td><td>Smooths current bursts</td></tr>
+      <tr><td>ESP32-CAM <b>3V3</b></td><td>MPU6050 <b>VCC</b></td><td>Red jumper</td><td>Powers the tilt sensor</td></tr>
+      <tr><td>ESP32-CAM <b>GND</b> (right side)</td><td>MPU6050 <b>GND</b></td><td>Black jumper</td><td>Ground</td></tr>
+      <tr><td>ESP32-CAM <b>IO14</b></td><td>MPU6050 <b>SCL</b></td><td>Yellow jumper</td><td>I²C clock</td></tr>
+      <tr><td>ESP32-CAM <b>IO15</b></td><td>MPU6050 <b>SDA</b></td><td>Green jumper</td><td>I²C data</td></tr>
+    </tbody>
+  </table>
+  <div class="note warn"><b>Check twice before powering on.</b> Red to 5V and black to GND. Reversing them, or putting 5 V on the 3V3 pin, destroys the board. Measure with the multimeter first: you should read about 5.0 V between the 5V and GND pins. Do not insert an SD card; IO14 and IO15 are shared with the SD slot.</div>
+</section>
+
+<!-- ======================================================= STEPS -->
+<section class="page">
+  <h2 style="margin-bottom:12px">Build steps</h2>
+
+  <div class="step"><div class="n">1</div><div>
+    <h2>Collect and check the parts</h2>
+    <ul class="check">
+      <li>Every <b>BUY</b> item from the shopping list has arrived.</li>
+      <li>ESP32-CAM: the camera ribbon is fully pushed into its connector and the latch is closed.</li>
+      <li>Power bank charged to full.</li>
+      <li>Arduino IDE 2.x installed with the “esp32 by Espressif Systems” board package.</li>
+    </ul>
+  </div></div>
+
+  <div class="step"><div class="n">2</div><div>
+    <h2>Flash the camera firmware</h2>
+    <figure class="frame">
+      <svg viewBox="0 0 900 190" role="img" aria-label="Laptop connected by USB to the MB programmer with the ESP32-CAM on top">
+        <rect x="30" y="20" width="200" height="120" rx="6" fill="#1b2a33"/>
+        <rect x="40" y="30" width="180" height="100" fill="#e8f0f7"/>
+        <g font-family="JetBrains Mono, monospace" font-size="10" fill="#1b2a33"><text x="50" y="50">Board: AI Thinker</text><text x="50" y="64">       ESP32-CAM</text><text x="50" y="80">Partition: Huge APP</text><text x="50" y="96">Speed: 115200</text><text x="50" y="114" fill="#2e7d4f">Upload ✓ Done</text></g>
+        <path d="M14 146 H246 L236 164 H24 Z" fill="#cfd8dc" stroke="#90a4ae" stroke-width="2"/>
+        <path d="M246 110 C330 110 340 150 420 150 H560" stroke="#2b2b2b" stroke-width="6" fill="none"/>
+        <text x="400" y="138" font-family="JetBrains Mono, monospace" font-size="12" fill="#56626e">micro-USB data cable</text>
+        <rect x="560" y="40" width="120" height="140" rx="6" fill="#263238" stroke="#1b2a33" stroke-width="2"/>
+        <rect x="572" y="14" width="96" height="142" rx="5" fill="#37474f" stroke="#1b2a33" stroke-width="2"/>
+        <circle cx="620" cy="44" r="16" fill="#111a1f" stroke="#78909c" stroke-width="2"/><circle cx="620" cy="44" r="6" fill="#3d6a8f"/>
+        <rect x="590" y="94" width="60" height="54" rx="2" fill="#cfd8dc" stroke="#90a4ae"/>
+        <rect x="604" y="174" width="32" height="12" rx="2" fill="#cfd8dc" stroke="#90a4ae"/>
+        <g font-family="Atkinson Hyperlegible, Arial" font-size="13" fill="#1b2a33"><text x="700" y="60">ESP32-CAM</text><text x="700" y="76" fill="#56626e">clipped on top</text><text x="700" y="140">MB programmer</text><text x="700" y="156" fill="#56626e">underneath</text></g>
+      </svg>
+    </figure>
+    <ol>
+      <li>Press the ESP32-CAM onto the MB programmer, camera facing up, pins lined up. Connect it to the laptop with a micro-USB <b>data</b> cable (charge-only cables don’t work).</li>
+      <li>Open <code>esp32_cam_ap/esp32_cam_ap.ino</code> in Arduino IDE. Choose <b>Board:</b> AI Thinker ESP32-CAM, <b>Partition:</b> Huge APP (3MB No OTA), <b>Upload speed:</b> 115200, and the CH340 COM port.</li>
+      <li>Click <b>Upload</b>. If you see “Failed to connect”, hold the <b>IO0</b> button on the MB, tap <b>RST</b>, release IO0, and upload again.</li>
+      <li>After “Done uploading”, tap <b>RST</b> once. Open Serial Monitor at 115200; it should print that the hotspot <code>BLENAV_CAM</code> started.</li>
+    </ol>
+  </div></div>
+
+  <div class="step"><div class="n">3</div><div>
+    <h2>Test the video on your phone</h2>
+    <div class="two">
+      <figure class="frame" style="margin:0">
+        <svg viewBox="0 0 300 260" role="img" aria-label="Phone browser showing the camera stream">
+          <rect x="80" y="6" width="140" height="248" rx="16" fill="#1b2a33"/>
+          <rect x="88" y="22" width="124" height="216" rx="6" fill="#fff"/>
+          <rect x="94" y="30" width="112" height="18" rx="9" fill="#eceff1"/>
+          <text x="150" y="43" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="8.5" fill="#1b2a33">192.168.4.1:81/stream</text>
+          <rect x="94" y="56" width="112" height="84" fill="#dfe6eb"/>
+          <polygon points="94,140 206,140 180,104 120,104" fill="#c7d2da"/>
+          <g stroke="#1b2a33" stroke-width="3" fill="none"><line x1="140" y1="116" x2="164" y2="116"/><line x1="164" y1="116" x2="164" y2="96"/><line x1="142" y1="116" x2="142" y2="132"/><line x1="162" y1="116" x2="162" y2="132"/></g>
+          <text x="150" y="160" text-anchor="middle" font-family="Atkinson Hyperlegible, Arial" font-size="10" fill="#2e7d4f" font-weight="700">Live video ✓</text>
+          <text x="150" y="176" text-anchor="middle" font-family="Atkinson Hyperlegible, Arial" font-size="9" fill="#56626e">Wi-Fi: BLENAV_CAM</text>
+        </svg>
+      </figure>
+      <div>
+        <ol>
+          <li>Keep the board on the MB, powered by USB.</li>
+          <li>On the phone, join Wi-Fi <b>BLENAV_CAM</b>, password <b>blenav1234</b>.</li>
+          <li>Open <code>http://192.168.4.1</code> in Chrome, then <code>http://192.168.4.1:81/stream</code>. You should see live video.</li>
+          <li>Wave a hand in front of the lens: the delay should be well under a second.</li>
+          <li>If the picture is upside down or very pink, note it; the OV3660 fix in the firmware handles this, so report it if it still happens.</li>
+        </ol>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<section class="page">
+  <div class="step"><div class="n">4</div><div>
+    <h2>Make the power connection</h2>
+    <ol>
+      <li>Remove the ESP32-CAM from the MB programmer. From now on the MB stays on the desk.</li>
+      <li>Solder the <b>1000 µF capacitor</b> to the top-side solder joints of the <b>5V</b> and <b>GND</b> pins (left column, first two pins). Long leg (+) to 5V. Striped side (−) to GND. Keep the legs short.</li>
+      <li>Push the power cable’s DuPont ends onto the pins: <b>red → 5V</b>, <b>black → GND</b>.</li>
+      <li>Plug the USB end into the power bank. Check with the multimeter: about 5.0 V between 5V and GND.</li>
+      <li>Leave it streaming to the phone for <b>30 minutes</b>. Pass if the video never drops and the metal shield is warm but not too hot to touch.</li>
+    </ol>
+    <div class="note">If the stream keeps dropping, the board is browning out. Use a shorter or thicker cable, check the capacitor polarity, and try another power bank. Some power banks switch off when the load is very small; the camera draws enough (about 0.2–0.3 A) that this is rare.</div>
+  </div></div>
+
+  <div class="step"><div class="n">5</div><div>
+    <h2>Connect the tilt sensor (MPU6050)</h2>
+    <ol>
+      <li>Solder the header pins onto the MPU6050 if they came loose.</li>
+      <li>Connect four jumper wires exactly as in the wiring diagram: <b>3V3→VCC</b>, <b>GND→GND</b>, <b>IO14→SCL</b>, <b>IO15→SDA</b>.</li>
+      <li>The tilt-reading code is a firmware addition still to be written (SRS requirement FR-CAM-05). Until then the sensor can stay connected and unused; the camera works without it.</li>
+    </ol>
+  </div></div>
+
+  <div class="step"><div class="n">6</div><div>
+    <h2>Build the camera box</h2>
+    <figure class="frame">
+      <svg viewBox="0 0 900 230" role="img" aria-label="Cutaway of the camera box">
+        <g font-family="Atkinson Hyperlegible, Arial" font-size="13" fill="#1b2a33">
+          <!-- front view -->
+          <text x="150" y="20" text-anchor="middle" font-weight="700">Front</text>
+          <rect x="60" y="34" width="180" height="120" rx="8" fill="#eceff1" stroke="#1b2a33" stroke-width="2"/>
+          <circle cx="150" cy="84" r="20" fill="#1b2a33"/><circle cx="150" cy="84" r="8" fill="#3d6a8f"/>
+          <text x="150" y="176" text-anchor="middle" fill="#56626e">lens hole ~14 mm, centred</text>
+          <!-- side section -->
+          <text x="560" y="20" text-anchor="middle" font-weight="700">Side cutaway</text>
+          <rect x="400" y="34" width="320" height="120" rx="8" fill="#fff" stroke="#1b2a33" stroke-width="2"/>
+          <g stroke="#90a4ae" stroke-width="4"><line x1="470" y1="34" x2="500" y2="34"/><line x1="520" y1="34" x2="550" y2="34"/><line x1="570" y1="34" x2="600" y2="34"/></g>
+          <text x="535" y="28" text-anchor="middle" fill="#56626e" font-size="11">air slots</text>
+          <rect x="680" y="46" width="12" height="96" fill="#263238"/>
+          <rect x="692" y="70" width="28" height="30" fill="#37474f"/>
+          <text x="660" y="168" text-anchor="end" fill="#56626e" font-size="11.5">ESP32-CAM upright, lens through the front</text>
+          <rect x="560" y="126" width="70" height="12" fill="#1e5aa8"/>
+          <rect x="560" y="138" width="70" height="6" fill="#f2c230"/>
+          <text x="560" y="190" fill="#56626e" font-size="11.5">MPU6050 flat on foam tape</text>
+          <path d="M400 110 H360 C330 110 320 150 290 160" stroke="#2b2b2b" stroke-width="5" fill="none"/>
+          <text x="300" y="210" fill="#56626e" font-size="11.5">power cable exits at the back</text>
+          <text x="740" y="94" fill="#56626e" font-size="11.5">front →</text>
+        </g>
+      </svg>
+    </figure>
+    <ol>
+      <li>Cut a ~14 mm lens hole in the front of the box. Cut 3–4 air slots in the top. Drill a small hole at the back for the cable.</li>
+      <li>Fix the ESP32-CAM upright behind the lens hole with foam tape so the lens looks straight out. Add the heatsink on the metal shield if you bought one.</li>
+      <li>Stick the MPU6050 <b>flat</b> on the bottom of the box with foam tape. It must not move relative to the camera, or the tilt reading will be wrong.</li>
+      <li>Secure the cable inside with a dab of hot glue so a tug on the cable can’t pull the pins off.</li>
+    </ol>
+  </div></div>
+</section>
+
+<section class="page">
+  <div class="step"><div class="n">7</div><div>
+    <h2>Mount the box on the cap</h2>
+    <figure class="frame">
+      <svg viewBox="0 0 900 300" role="img" aria-label="Camera tilt and what part of the floor it sees">
+        <g font-family="Atkinson Hyperlegible, Arial" font-size="13" fill="#1b2a33">
+          <line x1="0" y1="280" x2="900" y2="280" stroke="#90a4ae" stroke-width="2"/>
+          <!-- head and cap at left; 150 px = 1 m, camera 1.65 m up -->
+          <ellipse cx="96" cy="50" rx="28" ry="32" fill="#dfe6eb" stroke="#1b2a33" stroke-width="2"/>
+          <path d="M67 46 C66 10 126 8 125 42 Z" fill="#1d4f7a"/>
+          <path d="M120 40 C136 40 148 44 152 48 L122 48 Z" fill="#163e60"/>
+          <rect x="112" y="24" width="20" height="13" rx="2" fill="#eceff1" stroke="#1b2a33" stroke-width="1.5" transform="rotate(28 122 30)"/>
+          <polygon points="122,32 880,152 880,280 323,280" fill="#f2c230" opacity=".16"/>
+          <line x1="122" y1="32" x2="880" y2="152" stroke="#c99a12" stroke-width="2" stroke-dasharray="6 5"/>
+          <line x1="122" y1="32" x2="323" y2="280" stroke="#c99a12" stroke-width="2" stroke-dasharray="6 5"/>
+          <line x1="122" y1="32" x2="552" y2="280" stroke="#1d4f7a" stroke-width="1.5"/>
+          <line x1="122" y1="32" x2="420" y2="32" stroke="#56626e" stroke-width="1.5" stroke-dasharray="3 4"/>
+          <path d="M262 32 A140 140 0 0 1 243 102" fill="none" stroke="#1d4f7a" stroke-width="2"/>
+          <text x="272" y="76" fill="#1d4f7a" font-weight="700">25–30° down</text>
+          <line x1="40" y1="32" x2="40" y2="280" stroke="#56626e" stroke-width="1.5"/>
+          <text x="48" y="170" fill="#56626e">1.65 m</text>
+          <g font-family="JetBrains Mono, monospace" font-size="12" fill="#56626e" text-anchor="middle">
+            <line x1="272" y1="274" x2="272" y2="286" stroke="#56626e"/><text x="272" y="298">1 m</text>
+            <line x1="422" y1="274" x2="422" y2="286" stroke="#56626e"/><text x="422" y="298">2 m</text>
+            <line x1="572" y1="274" x2="572" y2="286" stroke="#56626e"/><text x="572" y="298">3 m</text>
+            <line x1="722" y1="274" x2="722" y2="286" stroke="#56626e"/><text x="722" y="298">4 m</text>
+            <line x1="872" y1="274" x2="872" y2="286" stroke="#56626e"/><text x="872" y="298">5 m</text>
+          </g>
+          <text x="330" y="262" fill="#9a7a0c">floor visible from ≈1.4 m</text>
+          <text x="140" y="262" fill="#56626e">cane zone</text>
+        </g>
+      </svg>
+      <figcaption>With a standard ~66° lens tilted 30° down, the camera sees the floor from about 1.4 m ahead out to the far end of a corridor. The area closer than that at floor level is the white cane’s job.</figcaption>
+    </figure>
+    <ol>
+      <li>Stick one Velcro half on the box and the other on the front panel of the cap, just above the peak, centred.</li>
+      <li>Glue a small foam wedge behind the box so the lens points <b>25–30° downward</b> when the user’s head is level.</li>
+      <li>Run the cable over the top of the cap to the back strap, then down the collar to the back pocket. Fix it every 10–15 cm with cable clips. Leave a little slack at the neck so turning the head doesn’t pull.</li>
+      <li>Put the power bank in the back pocket. Check: total weight on the cap under 100 g.</li>
+    </ol>
+  </div></div>
+
+  <div class="step"><div class="n">8</div><div>
+    <h2>Set up the phone</h2>
+    <figure class="frame">
+      <svg viewBox="0 0 900 270" role="img" aria-label="Three phone screens: Wi-Fi, Bluetooth and app settings">
+        <g font-family="Atkinson Hyperlegible, Arial">
+          <!-- screen 1 -->
+          <rect x="60" y="6" width="190" height="258" rx="18" fill="#1b2a33"/><rect x="70" y="22" width="170" height="228" rx="8" fill="#fff"/>
+          <text x="84" y="46" font-size="14" font-weight="700" fill="#1b2a33">Wi-Fi</text>
+          <rect x="80" y="58" width="150" height="40" rx="6" fill="#eef3f7"/>
+          <text x="90" y="75" font-size="12" font-weight="700" fill="#1b2a33">BLENAV_CAM</text>
+          <text x="90" y="90" font-size="10" fill="#56626e">Connected, no internet</text>
+          <rect x="80" y="112" width="150" height="96" rx="8" fill="#fff" stroke="#90a4ae"/>
+          <text x="90" y="132" font-size="10.5" fill="#1b2a33">This network has no</text>
+          <text x="90" y="146" font-size="10.5" fill="#1b2a33">internet access.</text>
+          <text x="90" y="160" font-size="10.5" fill="#1b2a33">Stay connected?</text>
+          <rect x="152" y="176" width="66" height="22" rx="11" fill="#1d4f7a"/>
+          <text x="185" y="191" text-anchor="middle" font-size="10.5" font-weight="700" fill="#fff">Yes</text>
+          <!-- screen 2 -->
+          <rect x="355" y="6" width="190" height="258" rx="18" fill="#1b2a33"/><rect x="365" y="22" width="170" height="228" rx="8" fill="#fff"/>
+          <text x="379" y="46" font-size="14" font-weight="700" fill="#1b2a33">Bluetooth</text>
+          <rect x="375" y="58" width="150" height="48" rx="6" fill="#f4eefb"/>
+          <text x="385" y="76" font-size="11.5" font-weight="700" fill="#1b2a33">Bone-conduction</text>
+          <text x="385" y="90" font-size="11.5" font-weight="700" fill="#1b2a33">earphones</text>
+          <text x="385" y="102" font-size="9.5" fill="#7b4bb7">Connected · media audio</text>
+          <text x="379" y="140" font-size="10.5" fill="#56626e">Speech now plays in</text>
+          <text x="379" y="154" font-size="10.5" fill="#56626e">the earphones.</text>
+          <!-- screen 3 -->
+          <rect x="650" y="6" width="190" height="258" rx="18" fill="#1b2a33"/><rect x="660" y="22" width="170" height="228" rx="8" fill="#fff"/>
+          <circle cx="745" cy="86" r="40" fill="#1d4f7a"/>
+          <text x="745" y="91" text-anchor="middle" font-size="15" font-weight="700" fill="#fff">START</text>
+          <text x="745" y="146" text-anchor="middle" font-size="10.5" fill="#2e7d4f" font-weight="700">Camera connected · 12 fps</text>
+          <line x1="672" y1="160" x2="818" y2="160" stroke="#d9dee4"/>
+          <g font-size="10.5" fill="#1b2a33"><text x="674" y="180">User height</text><text x="816" y="180" text-anchor="end" font-weight="700">165 cm</text>
+          <text x="674" y="200">Camera FOV</text><text x="816" y="200" text-anchor="end" font-weight="700">66°</text>
+          <text x="674" y="220">Stop distance</text><text x="816" y="220" text-anchor="end" font-weight="700">1.2 m</text></g>
+          <text x="745" y="242" text-anchor="middle" font-size="9" fill="#56626e">(app to be built)</text>
+        </g>
+      </svg>
+    </figure>
+    <ol>
+      <li>Pair the Bluetooth earphones (Settings → Bluetooth). Play any audio to confirm sound comes through them.</li>
+      <li>Join <b>BLENAV_CAM</b>. When Android says the network has no internet, tap <b>Yes / Stay connected</b>. Turn off “Switch to mobile data” / “Adaptive Wi-Fi” so the phone doesn’t drop the camera.</li>
+      <li>Install the navigation app and enter the user’s height and the camera field of view (66° for the standard lens).</li>
+    </ol>
+  </div></div>
+</section>
+
+<section class="page">
+  <div class="step"><div class="n">9</div><div>
+    <h2>Build the Android app in this order</h2>
+    <p>Each stage is testable on its own. Use the phone’s own camera or a recorded video as the source until the cap unit is ready.</p>
+    <table style="font-size:8.8pt">
+      <thead><tr><th>Stage</th><th>Build</th><th>Done when</th><th>SRS</th></tr></thead>
+      <tbody>
+        <tr><td>9.1</td><td>Frame receiver: connect to BLENAV_CAM, show the stream, keep only the newest frame</td><td>Video plays in the app; unplugging the cap triggers “Camera disconnected” within 2 s</td><td class="mono">M2</td></tr>
+        <tr><td>9.2</td><td>Object detection: export YOLOv8n to TFLite, run it on each frame</td><td>Boxes and labels drawn on screen at 8+ fps</td><td class="mono">M3</td></tr>
+        <tr><td>9.3</td><td>Voice: Android TextToSpeech with priority and cooldown</td><td>“Stop” interrupts other speech; plays through the earphones</td><td class="mono">M8</td></tr>
+        <tr><td>9.4</td><td>Obstacles + distance: walking corridor, size-based distance (port of <code>egocentric.py</code>)</td><td>A chair at 2 m reads 1.6–2.4 m</td><td class="mono">M4, M5</td></tr>
+        <tr><td>9.5</td><td>Path analysis: left / centre / right zones</td><td>Chair on the left → “Move right” every time</td><td class="mono">M6</td></tr>
+        <tr><td>9.6</td><td>Navigation decision: port <code>guidance.decide()</code> with its tests, 10 Hz loop</td><td>Unit tests pass; full pipeline speaks correct instructions</td><td class="mono">M7</td></tr>
+        <tr><td>9.7</td><td>Settings screen, debug overlay, foreground service</td><td>Works with the screen off; helper can change all thresholds</td><td class="mono">M9</td></tr>
+      </tbody>
+    </table>
+  </div></div>
+
+  <div class="step"><div class="n">10</div><div>
+    <h2>Test on a marked course</h2>
+    <figure class="frame">
+      <svg viewBox="0 0 900 200" style="max-height:32mm" role="img" aria-label="Top-down test course layout">
+        <g font-family="Atkinson Hyperlegible, Arial" font-size="12" fill="#1b2a33">
+          <rect x="40" y="40" width="820" height="110" fill="#f7f9fa" stroke="#1b2a33" stroke-width="2"/>
+          <g stroke="#c7d2da" stroke-width="1.5"><line x1="94.7" y1="40" x2="94.7" y2="150"/><line x1="149.3" y1="40" x2="149.3" y2="150"/><line x1="204" y1="40" x2="204" y2="150"/><line x1="258.7" y1="40" x2="258.7" y2="150"/><line x1="313.3" y1="40" x2="313.3" y2="150"/><line x1="368" y1="40" x2="368" y2="150"/><line x1="422.7" y1="40" x2="422.7" y2="150"/><line x1="477.3" y1="40" x2="477.3" y2="150"/><line x1="532" y1="40" x2="532" y2="150"/><line x1="586.7" y1="40" x2="586.7" y2="150"/><line x1="641.3" y1="40" x2="641.3" y2="150"/><line x1="696" y1="40" x2="696" y2="150"/><line x1="750.7" y1="40" x2="750.7" y2="150"/><line x1="805.3" y1="40" x2="805.3" y2="150"/></g>
+          <line x1="40" y1="95" x2="860" y2="95" stroke="#1d4f7a" stroke-width="2" stroke-dasharray="8 6"/>
+          <rect x="40" y="40" width="10" height="110" fill="#2e7d4f"/><text x="46" y="32" text-anchor="middle" fill="#2e7d4f" font-weight="700">START</text>
+          <rect x="850" y="40" width="10" height="110" fill="#1b2a33"/><text x="855" y="32" text-anchor="middle" font-weight="700">wall</text>
+          <rect x="250" y="56" width="22" height="22" fill="#e0a526" stroke="#8a6d1d"/><text x="261" y="172" text-anchor="middle">chair 4 m</text>
+          <rect x="466" y="84" width="24" height="24" fill="#a1887f" stroke="#5d4037"/><text x="478" y="172" text-anchor="middle">box 8 m</text>
+          <circle cx="660" cy="70" r="11" fill="#7b4bb7"/><path d="M660 82 V130" stroke="#7b4bb7" stroke-width="2.5" stroke-dasharray="4 4"/><polygon points="654,128 660,140 666,128" fill="#7b4bb7"/><text x="660" y="172" text-anchor="middle">person crossing 11 m</text>
+          <text x="450" y="194" text-anchor="middle" fill="#56626e">15 m corridor, tape mark every 1 m, walking line in blue</text>
+        </g>
+      </svg>
+    </figure>
+    <ul class="check">
+      <li>AT-01: walking at the chair → “Chair ahead. Move …” at about 2.5 m, “Stop” at about 1.2 m.</li>
+      <li>AT-02: chair on the left → “Move right”.</li>
+      <li>AT-03: person crosses → warning before 1.2 m, never “Path clear” while they are in the way.</li>
+      <li>AT-06: switch off the power bank mid-walk → “Camera disconnected. Please stop.” within 2 s.</li>
+      <li>AT-09: objects at 1, 2, 3, 4 m → distance within ±20%.</li>
+      <li>AT-10: a blindfolded teammate walks the course with the cane and the system, no collisions.</li>
+      <li>Record every run on video; keep the best one as the demo fallback.</li>
+    </ul>
+  </div></div>
+
+  <div class="step"><div class="n">11</div><div>
+    <h2>Demo-day checklist</h2>
+    <div class="two">
+      <ul class="check">
+        <li>Power bank and phone fully charged; spare power bank in the bag.</li>
+        <li>Cap unit tested in the actual demo room lighting.</li>
+        <li>Earphones paired and charged.</li>
+        <li>Phone: Wi-Fi “stay connected” set, mobile data switching off.</li>
+      </ul>
+      <ul class="check">
+        <li>Debug view open on a second screen so evaluators can see boxes and distances.</li>
+        <li>Recorded fallback video ready.</li>
+        <li>White cane in hand during the demo.</li>
+        <li>SRS, Phase-2 report and this guide printed.</li>
+      </ul>
+    </div>
+  </div></div>
+</section>
+
+</body>
+</html>
