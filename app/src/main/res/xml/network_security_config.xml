@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  CLAUDE.md §6.2: the ESP32-CAM speaks plain HTTP. Cleartext is allowed for the
+  camera's fixed address only; Android 9+ blocks it everywhere else.
+  Debug builds replace this file (src/debug/res/xml) so the fake camera on a
+  laptop address also works during Phase A.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">192.168.4.1</domain>
+    </domain-config>
+</network-security-config>

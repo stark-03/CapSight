@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  DEBUG BUILDS ONLY. The fake ESP32-CAM (tools/fake_esp32cam.py) runs on the
+  laptop, whose address is not 192.168.4.1, so debug builds allow cleartext to
+  any host. Release builds use src/main/res/xml/network_security_config.xml,
+  which allows only the real camera's 192.168.4.1 (CLAUDE.md §6.2).
+-->
+<network-security-config xmlns:tools="http://schemas.android.com/tools">
+    <base-config
+        cleartextTrafficPermitted="true"
+        tools:ignore="InsecureBaseConfiguration" />
+</network-security-config>
