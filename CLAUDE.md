@@ -45,7 +45,7 @@ Rules for Phase A:
   1. `PhoneCameraSource` — the phone's own rear camera (CameraX), for detection, distance,
      path, decisions and speech. This is the main Phase-A test source.
   2. `VideoFileSource` — a recorded walk video, for repeatable tests.
-  3. **A fake ESP32-CAM on the laptop** — `tools/fake_esp32cam.py` (to be written in build
+  3. **A fake ESP32-CAM on the laptop** — `tools/fake_esp32cam.py` (written in build
      step 1). It must reproduce §4.1–§4.2 byte-for-byte: port 80 `/` HTML containing
      `BLENAV_CAM`, port 81 `/stream` with the same boundary string, the same per-frame headers,
      **no leading boundary on the first frame**, 640×480 JPEG frames from a video file or the
@@ -53,6 +53,9 @@ Rules for Phase A:
      laptop's hotspot), so the camera base URL must be a **setting** (default
      `http://192.168.4.1`, overridable in a developer/debug settings screen). When the real
      device arrives, nothing in the app changes except leaving that setting at its default.
+     Port rule (app `CameraContract.endpoints` and the fake's `--port` agree): base URL on port
+     80 → stream on 81; any other base port P → stream on P+1, so the fake can run unprivileged
+     (`--port 8080` → stream 8081, app address `http://<laptop-ip>:8080`).
 - Treat §4 as the contract the fake device and the future firmware both follow. If Phase A
   reveals the contract needs a change (for example a `/status` endpoint), write it into §4.4
   as a v2 item for Phase B rather than assuming the device has it.
@@ -163,7 +166,9 @@ in the same commit and update the table in §4.4.
 | Protocol | Plain **HTTP (cleartext)** — the app needs a network security config (§6.2) |
 
 ### 4.2 Stream format (write the parser for exactly this)
-- Response `Content-Type: multipart/x-mixed-replace;boundary=123456789000000000000987654321`
+- Response `Content-Type: multipart/x-mixed-replace;boundary=123456789000000000000987654321`,
+  sent with `Transfer-Encoding: chunked` (each `httpd_resp_send_chunk` is one HTTP chunk;
+  `HttpURLConnection` and curl remove the chunking, so the parser sees the body below).
 - Each frame is sent as:
   `Content-Type: image/jpeg\r\nContent-Length: <N>\r\n\r\n` + N bytes of JPEG + `\r\n--123456789000000000000987654321\r\n`
 - **The first frame has NO leading boundary** — the body starts directly with `Content-Type:`.
@@ -249,7 +254,11 @@ WAKE_LOCK, VIBRATE,
 FOREGROUND_SERVICE                          (API 28+)
 FOREGROUND_SERVICE_CONNECTED_DEVICE         (API 34+, matches the service type below)
 POST_NOTIFICATIONS                          (API 33+, runtime request)
+CAMERA                                      (runtime; PhoneCameraSource test source only)
 ```
+- `<uses-feature android:name="android.hardware.camera" android:required="false"/>`.
+- If NavigationService ever runs `PhoneCameraSource` with the screen off, it also needs service
+  type `camera` + `FOREGROUND_SERVICE_CAMERA` (API 34+); decide in step 7.
 - Service: `<service android:name=".service.NavigationService" android:exported="false"
   android:foregroundServiceType="connectedDevice"/>` and call `startForeground` with
   `ServiceCompat.startForeground(..., FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)` on API 29+.
@@ -261,6 +270,9 @@ POST_NOTIFICATIONS                          (API 33+, runtime request)
 ### 6.2 Cleartext HTTP
 `res/xml/network_security_config.xml` permitting cleartext **only** for `192.168.4.1`, referenced
 from `<application android:networkSecurityConfig=...>`. Without it, Android 9+ blocks the stream.
+**Debug builds only** override it (`app/src/debug/res/xml/network_security_config.xml`) to allow
+cleartext to any host, because the fake camera runs on a laptop address. Release builds keep the
+192.168.4.1-only rule; to use the fake with a release build, give the laptop hotspot 192.168.4.1.
 
 ### 6.3 Staying on the camera Wi-Fi
 The camera network has no internet, so Android may prefer mobile data. Approach that works on API 24+:
