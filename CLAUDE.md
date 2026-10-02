@@ -305,22 +305,32 @@ last known obstacles (hold, §8).
 
 ## 7. ML model
 
-### 7.1 Export (run on the laptop, Python env from Phase 2)
+### 7.1 Export (run on the laptop)
+Ultralytics ≥ 8.4.83 replaced `format=tflite` with `format=litert` (converted directly from
+PyTorch by `litert-torch`), which has **no FP16 option** — only FP32 or INT8. The shipped model
+was made with Ultralytics 8.4.121:
 ```bash
-pip install ultralytics
-yolo export model=ml/yolov8n.pt format=tflite imgsz=320 half=True
-# copy the *_float16.tflite output to app/src/main/assets/yolov8n_320_fp16.tflite
+# separate venv, so the Phase-2 'blenav' env is not modified; litert-torch needs torch < 2.14
+pip install "torch==2.13.*" "torchvision==0.28.*" --index-url https://download.pytorch.org/whl/cpu
+pip install "ultralytics==8.4.121" "litert-torch==0.9.4" "ai-edge-litert==2.2.0"
+yolo export model=ml/yolov8n.pt format=litert imgsz=320
+# copy yolov8n.tflite to app/src/main/assets/yolov8n_320_fp32.tflite  (12.2 MB)
 ```
-Start with the float16 model (float32 input/output, GPU-friendly). Try INT8
-(`int8=True`) later only if low-end phones are too slow, and re-check accuracy.
+FP32 runs fine on the GPU delegate (which computes in FP16 internally). Try INT8
+(`quantize=8`) later only if low-end phones are too slow, and re-check accuracy.
 In Gradle: `androidResources { noCompress += "tflite" }` so the model can be memory-mapped.
+Runtime: LiteRT **1.4.2** (`litert`, `litert-gpu`, `litert-gpu-api`) — Interpreter API, minSdk 21,
+arm64-v8a + armeabi-v7a. The model was checked to load in the 1.4 runtime.
 
-### 7.2 Model I/O (verify on first run by logging tensor shapes and value ranges)
-- Input: `[1, 320, 320, 3]` float32, RGB, values 0–1. Letterbox the frame to 320×320
-  (pad colour 114/255), remember scale and padding to map boxes back.
+### 7.2 Model I/O (verified on the laptop; the app logs shapes on load)
+- Input: **`[1, 3, 320, 320]` float32, NCHW** (the LiteRT export keeps PyTorch's layout; old
+  TFLite exports were `[1, 320, 320, 3]` — `YoloDetector` reads the layout from the model),
+  RGB, values 0–1. Letterbox the frame to 320×320 (pad colour 114/255), remember scale and
+  padding to map boxes back.
 - Output: `[1, 84, 2100]` — per candidate: cx, cy, w, h, then 80 class scores. No NMS inside
   the model: implement score threshold + per-class NMS (IoU 0.45) in Kotlin.
-- Check whether box coordinates come out normalised (0–1) or in pixels before mapping back.
+- Box coordinates come out **normalised (0–1)**; `YoloDecoder` also accepts pixel output.
+  On Ultralytics' `bus.jpg` the Kotlin decoding matches PyTorch within 2 px (unit-test fixture).
 
 ### 7.3 Classes used (COCO ids, from `reference/blenav/detector.py`)
 Person 0; obstacles: 1 bicycle, 13 bench, 24 backpack, 26 handbag, 28 suitcase, 39 bottle,

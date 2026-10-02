@@ -65,6 +65,7 @@ import com.example.capsight.camera.CameraContract
 import com.example.capsight.camera.Frame
 import com.example.capsight.camera.LinkState
 import com.example.capsight.camera.ReceiverStatus
+import com.example.capsight.detect.DetectionState
 import com.example.capsight.settings.CameraSettings
 import com.example.capsight.settings.SourceKind
 import java.util.Locale
@@ -75,13 +76,15 @@ private val Red = Color(0xFFB71C1C)
 private val Grey = Color(0xFF424242)
 private val MinTouch = 48.dp
 
-/** Camera debug screen: live frame, FPS, link state, source and camera address (FR-APP-05). */
+/** Debug screen: live frame with detection boxes, FPS, link state, source settings (FR-APP-05). */
 @Composable
 fun DebugScreen(modifier: Modifier = Modifier, vm: DebugViewModel = viewModel()) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val status by vm.status.collectAsStateWithLifecycle()
     val frame by vm.frame.collectAsStateWithLifecycle()
     val running by vm.running.collectAsStateWithLifecycle()
+    val detection by vm.detection.collectAsStateWithLifecycle()
+    val detectionSettings by vm.detectionSettings.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     LifecycleStartEffect(vm) {
@@ -122,12 +125,12 @@ fun DebugScreen(modifier: Modifier = Modifier, vm: DebugViewModel = viewModel())
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
-            "Camera debug",
+            "CapSight debug",
             style = MaterialTheme.typography.headlineSmall,
             modifier = Modifier.semantics { heading() },
         )
         StatusBanner(running, status)
-        FrameView(frame, status, running)
+        FrameView(frame, status, running, detection)
         StartStopButton(running, onStart = onStart, onStop = vm::stop)
         if (permissionDenied) {
             Text(
@@ -136,6 +139,18 @@ fun DebugScreen(modifier: Modifier = Modifier, vm: DebugViewModel = viewModel())
             )
         }
         StatsBlock(status)
+        DetectionBlock(detection)
+        HorizontalDivider()
+        detectionSettings?.let { d ->
+            Text("Detection", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
+            SwitchRow("Use GPU", "Off forces the CPU (4 threads), to compare speed.", d.useGpu, vm::setUseGpu)
+            SwitchRow(
+                "Show all 80 classes",
+                "Off shows only person and the obstacle classes navigation uses.",
+                d.showAllClasses,
+                vm::setShowAllClasses,
+            )
+        }
         HorizontalDivider()
         SourcePicker(s.source, vm::setSource)
         when (s.source) {
@@ -172,7 +187,7 @@ private fun StatusBanner(running: Boolean, status: ReceiverStatus) {
 }
 
 @Composable
-private fun FrameView(frame: Frame?, status: ReceiverStatus, running: Boolean) {
+private fun FrameView(frame: Frame?, status: ReceiverStatus, running: Boolean, detection: DetectionState) {
     Box(
         Modifier
             .fillMaxWidth()
@@ -188,10 +203,11 @@ private fun FrameView(frame: Frame?, status: ReceiverStatus, running: Boolean) {
                 alpha = if (status.link == LinkState.CONNECTED) 1f else 0.35f,
                 modifier = Modifier.fillMaxSize(),
             )
+            DetectionOverlay(detection, Modifier.fillMaxSize())
         }
         if (running) {
             Text(
-                overlayText(status),
+                overlayText(status, detection),
                 color = Color.White,
                 fontFamily = FontFamily.Monospace,
                 fontSize = 13.sp,
@@ -216,11 +232,16 @@ private fun FrameView(frame: Frame?, status: ReceiverStatus, running: Boolean) {
     }
 }
 
-private fun overlayText(s: ReceiverStatus): String {
+private fun overlayText(s: ReceiverStatus, d: DetectionState): String {
     val fps = String.format(Locale.US, "%.1f fps", s.fps)
     val size = if (s.frameWidth > 0) "${s.frameWidth}x${s.frameHeight}" else "no frame"
     val age = s.frameAgeMs?.let { "age ${it} ms" } ?: "age -"
-    return "$fps  $size  $age"
+    val det = when {
+        d.error != null && !d.running -> "detector: error"
+        !d.running -> "detector: loading"
+        else -> String.format(Locale.US, "det %.1f fps  %s  infer %d ms", d.fps, d.backend, d.inferenceMs)
+    }
+    return "cam $fps  $size  $age\n$det"
 }
 
 @Composable
@@ -247,6 +268,38 @@ private fun StatsBlock(s: ReceiverStatus) {
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
+    }
+}
+
+@Composable
+private fun DetectionBlock(d: DetectionState) {
+    if (d.error != null) Text(d.error, color = Red, style = MaterialTheme.typography.bodyMedium)
+    if (!d.running) return
+    val found = if (d.detections.isEmpty()) {
+        "nothing"
+    } else {
+        d.detections.joinToString { "${it.label} ${String.format(Locale.US, "%.2f", it.score)}" }
+    }
+    Text(
+        "Detections: $found   (frame ${d.frameSeq}, ${d.totalMs} ms total)",
+        style = MaterialTheme.typography.bodyMedium,
+    )
+}
+
+@Composable
+private fun SwitchRow(title: String, help: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = MinTouch)
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onChange),
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title)
+            Text(help, style = MaterialTheme.typography.bodySmall)
+        }
+        Switch(checked = checked, onCheckedChange = null)
     }
 }
 
@@ -314,22 +367,12 @@ private fun Esp32Settings(
             modifier = Modifier.heightIn(min = MinTouch),
         ) { Text("Use real cap (192.168.4.1)") }
     }
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = MinTouch)
-            .toggleable(value = s.bindToWifi, role = Role.Switch, onValueChange = onBindToWifi),
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text("Bind to Wi-Fi network")
-            Text(
-                "Leave on. Turn off only if the laptop joined this phone's hotspot.",
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-        Switch(checked = s.bindToWifi, onCheckedChange = null)
-    }
+    SwitchRow(
+        "Bind to Wi-Fi network",
+        "Leave on. Turn off only if the laptop joined this phone's hotspot.",
+        s.bindToWifi,
+        onBindToWifi,
+    )
 }
 
 @Composable

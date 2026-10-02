@@ -15,7 +15,10 @@ import com.example.capsight.camera.MjpegFrameSource
 import com.example.capsight.camera.PhoneCameraSource
 import com.example.capsight.camera.VideoFileSource
 import com.example.capsight.settings.AppSettings
+import com.example.capsight.detect.CocoLabels
+import com.example.capsight.detect.DetectionRunner
 import com.example.capsight.settings.CameraSettings
+import com.example.capsight.settings.DetectionSettings
 import com.example.capsight.settings.SourceKind
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,7 +33,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /**
- * Hosts the frame receiver for the camera debug screen (FR-APP-05, build step 1).
+ * Hosts the frame receiver and detector for the debug screen (FR-APP-05, steps 1-2).
  *
  * TEMPORARY OWNER: from build step 7 NavigationService owns the receiver so it
  * survives the screen turning off, and this ViewModel only observes it. Until then
@@ -40,11 +43,15 @@ class DebugViewModel(app: Application) : AndroidViewModel(app) {
 
     private val appSettings = AppSettings(app)
     private val receiver = FrameReceiver()
+    private val detector = DetectionRunner(app)
 
     val settings: StateFlow<CameraSettings?> =
         appSettings.camera.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    val detectionSettings: StateFlow<DetectionSettings?> =
+        appSettings.detection.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val frame = receiver.frame
     val status = receiver.status
+    val detection = detector.state
 
     private val _running = MutableStateFlow(false)
     val running: StateFlow<Boolean> = _running.asStateFlow()
@@ -58,6 +65,19 @@ class DebugViewModel(app: Application) : AndroidViewModel(app) {
                 .distinctUntilChanged()
                 // A settings change while running restarts the receiver with the new source.
                 .collectLatest { s -> if (s != null) receiver.run(sourceFor(s), s.cameraLostMs) }
+        }
+        // Separate job, so switching GPU/CPU or class filter does not reconnect the camera.
+        viewModelScope.launch {
+            combine(_running, visible, detectionSettings.filterNotNull()) { run, shown, d ->
+                if (run && shown) d else null
+            }
+                .distinctUntilChanged()
+                .collectLatest { d ->
+                    if (d != null) {
+                        val classes = if (d.showAllClasses) null else CocoLabels.NAVIGATION
+                        detector.run(receiver.frame, d.minConfidence, d.useGpu, classes)
+                    }
+                }
         }
     }
 
@@ -78,6 +98,10 @@ class DebugViewModel(app: Application) : AndroidViewModel(app) {
     fun setCameraBaseUrl(url: String) = viewModelScope.launch { appSettings.setCameraBaseUrl(url) }
 
     fun setBindToWifi(bind: Boolean) = viewModelScope.launch { appSettings.setBindToWifi(bind) }
+
+    fun setUseGpu(use: Boolean) = viewModelScope.launch { appSettings.setUseGpu(use) }
+
+    fun setShowAllClasses(show: Boolean) = viewModelScope.launch { appSettings.setShowAllClasses(show) }
 
     fun setVideo(uri: Uri) {
         try {

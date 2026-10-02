@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -32,6 +33,19 @@ data class CameraSettings(
     }
 }
 
+/** Detection settings (FR-DET-03). Defaults from CLAUDE.md §8. */
+data class DetectionSettings(
+    val minConfidence: Float = DEFAULT_MIN_CONFIDENCE,
+    /** Try the GPU delegate first; CPU is the fallback either way (§6.4). */
+    val useGpu: Boolean = true,
+    /** Debug only: draw all 80 COCO classes, not just person + obstacles (§7.3). */
+    val showAllClasses: Boolean = false,
+) {
+    companion object {
+        const val DEFAULT_MIN_CONFIDENCE = 0.40f
+    }
+}
+
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
 class AppSettings(context: Context) {
@@ -49,6 +63,19 @@ class AppSettings(context: Context) {
         )
     }
 
+    val detection: Flow<DetectionSettings> = store.data.map { p ->
+        val defaults = DetectionSettings()
+        DetectionSettings(
+            minConfidence = p[MIN_CONFIDENCE] ?: defaults.minConfidence,
+            useGpu = p[USE_GPU] ?: defaults.useGpu,
+            showAllClasses = p[SHOW_ALL_CLASSES] ?: defaults.showAllClasses,
+        )
+    }
+
+    suspend fun setUseGpu(use: Boolean) = store.edit { it[USE_GPU] = use }
+
+    suspend fun setShowAllClasses(show: Boolean) = store.edit { it[SHOW_ALL_CLASSES] = show }
+
     suspend fun setSource(kind: SourceKind) = store.edit { it[SOURCE] = kind.name }
 
     suspend fun setCameraBaseUrl(url: String) = store.edit { it[BASE_URL] = url.trim() }
@@ -63,5 +90,8 @@ class AppSettings(context: Context) {
         val BIND_WIFI = booleanPreferencesKey("camera_bind_wifi")
         val VIDEO_URI = stringPreferencesKey("camera_video_uri")
         val CAMERA_LOST_MS = longPreferencesKey("camera_lost_ms")
+        val MIN_CONFIDENCE = floatPreferencesKey("det_min_confidence")
+        val USE_GPU = booleanPreferencesKey("det_use_gpu")
+        val SHOW_ALL_CLASSES = booleanPreferencesKey("det_show_all_classes")
     }
 }
