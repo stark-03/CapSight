@@ -66,6 +66,11 @@ import com.example.capsight.camera.Frame
 import com.example.capsight.camera.LinkState
 import com.example.capsight.camera.ReceiverStatus
 import com.example.capsight.detect.DetectionState
+import com.example.capsight.settings.SpeechSettings
+import com.example.capsight.voice.SpeakerState
+import androidx.compose.material3.Slider
+import androidx.compose.ui.semantics.contentDescription
+import kotlin.math.roundToInt
 import com.example.capsight.settings.CameraSettings
 import com.example.capsight.settings.SourceKind
 import java.util.Locale
@@ -85,6 +90,8 @@ fun DebugScreen(modifier: Modifier = Modifier, vm: DebugViewModel = viewModel())
     val running by vm.running.collectAsStateWithLifecycle()
     val detection by vm.detection.collectAsStateWithLifecycle()
     val detectionSettings by vm.detectionSettings.collectAsStateWithLifecycle()
+    val speech by vm.speech.collectAsStateWithLifecycle()
+    val speechSettings by vm.speechSettings.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     LifecycleStartEffect(vm) {
@@ -138,6 +145,7 @@ fun DebugScreen(modifier: Modifier = Modifier, vm: DebugViewModel = viewModel())
                 color = Red,
             )
         }
+        CaptionBlock(speech)
         StatsBlock(status)
         DetectionBlock(detection)
         HorizontalDivider()
@@ -151,6 +159,8 @@ fun DebugScreen(modifier: Modifier = Modifier, vm: DebugViewModel = viewModel())
                 vm::setShowAllClasses,
             )
         }
+        HorizontalDivider()
+        speechSettings?.let { sp -> SpeechSection(speech, sp, vm) }
         HorizontalDivider()
         SourcePicker(s.source, vm::setSource)
         when (s.source) {
@@ -285,6 +295,72 @@ private fun DetectionBlock(d: DetectionState) {
         style = MaterialTheme.typography.bodyMedium,
     )
 }
+
+/** Captions: what is being said, so a sighted helper can follow without sound (§8). */
+@Composable
+private fun CaptionBlock(sp: SpeakerState) {
+    val text = sp.speaking?.let { "Saying: $it" } ?: sp.lastSpoken.takeIf { it.isNotEmpty() }?.let { "Said: $it" }
+    if (text != null) {
+        Text(text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+private fun SpeechSection(sp: SpeakerState, settings: SpeechSettings, vm: DebugViewModel) {
+    Text("Speech", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
+    val engine = when {
+        sp.ttsReady -> "Ready (${sp.engine})"
+        sp.error != null -> sp.error
+        else -> "Starting text-to-speech…"
+    }
+    Text("Engine: $engine", style = MaterialTheme.typography.bodyMedium, color = if (sp.ttsReady) Color.Unspecified else Red)
+    Text("Output: ${sp.output}", style = MaterialTheme.typography.bodyMedium)
+    Text(
+        "Pending: ${sp.pending ?: "-"}   Suppressed: ${sp.lastSuppressed ?: "-"}" +
+            if (sp.recoveries > 0) "   Engine restarts: ${sp.recoveries}" else "",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    val tests = listOf(
+        DebugViewModel.SpeechTest.CLEAR to "Path clear (P4)",
+        DebugViewModel.SpeechTest.AVOID to "Chair, move left (P2)",
+        DebugViewModel.SpeechTest.STOP to "Stop (P0, vibrates)",
+        DebugViewModel.SpeechTest.BURST to "Burst: 4 at once",
+        DebugViewModel.SpeechTest.INTERRUPT to "P0 interrupts",
+    )
+    tests.chunked(2).forEach { row ->
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            row.forEach { (test, label) ->
+                OutlinedButton(
+                    onClick = { vm.testSpeech(test) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = MinTouch),
+                ) { Text(label) }
+            }
+            if (row.size == 1) Box(Modifier.weight(1f))
+        }
+    }
+    Text(
+        "Speech rate: ${String.format(Locale.US, "%.2f", settings.rate)}x",
+        style = MaterialTheme.typography.bodyMedium,
+    )
+    Slider(
+        value = settings.rate,
+        onValueChange = { vm.setSpeechRate((it * RATE_STEPS).roundToInt() / RATE_STEPS) },
+        valueRange = MIN_RATE..MAX_RATE,
+        modifier = Modifier.semantics { contentDescription = "Speech rate" },
+    )
+    SwitchRow(
+        "Announce camera link",
+        "Says \"Camera disconnected. Please stop.\" every 2 s while the camera is lost, and \"Camera connected.\" when it returns.",
+        settings.announceCameraLink,
+        vm::setAnnounceCameraLink,
+    )
+}
+
+private const val MIN_RATE = 0.5f
+private const val MAX_RATE = 2.0f
+private const val RATE_STEPS = 20f
 
 @Composable
 private fun SwitchRow(title: String, help: String, checked: Boolean, onChange: (Boolean) -> Unit) {

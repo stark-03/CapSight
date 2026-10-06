@@ -9,6 +9,15 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <!-- PhoneCameraSource, the Phase-A test source (FR-RX-05). Runtime permission. -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- P0 alerts vibrate (FR-VOICE-06); P2 too while speech is unavailable -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- API 30+: without this the text-to-speech engine is invisible (CLAUDE.md §6.1) -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
 
     <!-- The cap camera is the real source; a phone without a rear camera still works. -->
     <uses-feature
@@ -28,7 +37,6 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:label="@string/app_name"
             android:theme="@style/Theme.CapSight"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>

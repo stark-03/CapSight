@@ -46,6 +46,22 @@ data class DetectionSettings(
     }
 }
 
+/** Speech settings (FR-VOICE-05, FR-NAV-04). Defaults from CLAUDE.md §8. */
+data class SpeechSettings(
+    /** 1.0 = the engine's normal rate. */
+    val rate: Float = 1.0f,
+    /** 0..1, relative to the phone's media volume. */
+    val volume: Float = 1.0f,
+    /** Same phrase is not repeated within this. */
+    val phraseCooldownMs: Long = 3_000L,
+    /** P0 ("Stop. ...") repeats sooner. */
+    val stopCooldownMs: Long = 2_000L,
+    /** "Path clear." at most this often. */
+    val clearRepeatMs: Long = 6_000L,
+    /** Debug: announce camera link changes (moves into the guidance loop in step 6). */
+    val announceCameraLink: Boolean = true,
+)
+
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
 class AppSettings(context: Context) {
@@ -72,6 +88,22 @@ class AppSettings(context: Context) {
         )
     }
 
+    val speech: Flow<SpeechSettings> = store.data.map { p ->
+        val defaults = SpeechSettings()
+        SpeechSettings(
+            rate = p[SPEECH_RATE] ?: defaults.rate,
+            volume = p[SPEECH_VOLUME] ?: defaults.volume,
+            phraseCooldownMs = p[PHRASE_COOLDOWN_MS] ?: defaults.phraseCooldownMs,
+            stopCooldownMs = p[STOP_COOLDOWN_MS] ?: defaults.stopCooldownMs,
+            clearRepeatMs = p[CLEAR_REPEAT_MS] ?: defaults.clearRepeatMs,
+            announceCameraLink = p[ANNOUNCE_LINK] ?: defaults.announceCameraLink,
+        )
+    }
+
+    suspend fun setSpeechRate(rate: Float) = store.edit { it[SPEECH_RATE] = rate }
+
+    suspend fun setAnnounceCameraLink(on: Boolean) = store.edit { it[ANNOUNCE_LINK] = on }
+
     suspend fun setUseGpu(use: Boolean) = store.edit { it[USE_GPU] = use }
 
     suspend fun setShowAllClasses(show: Boolean) = store.edit { it[SHOW_ALL_CLASSES] = show }
@@ -93,5 +125,11 @@ class AppSettings(context: Context) {
         val MIN_CONFIDENCE = floatPreferencesKey("det_min_confidence")
         val USE_GPU = booleanPreferencesKey("det_use_gpu")
         val SHOW_ALL_CLASSES = booleanPreferencesKey("det_show_all_classes")
+        val SPEECH_RATE = floatPreferencesKey("speech_rate")
+        val SPEECH_VOLUME = floatPreferencesKey("speech_volume")
+        val PHRASE_COOLDOWN_MS = longPreferencesKey("speech_phrase_cooldown_ms")
+        val STOP_COOLDOWN_MS = longPreferencesKey("speech_stop_cooldown_ms")
+        val CLEAR_REPEAT_MS = longPreferencesKey("speech_clear_repeat_ms")
+        val ANNOUNCE_LINK = booleanPreferencesKey("speech_announce_camera_link")
     }
 }
