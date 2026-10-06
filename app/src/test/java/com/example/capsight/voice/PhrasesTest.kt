@@ -1,5 +1,6 @@
 package com.example.capsight.voice
 
+import com.example.capsight.perception.Side
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -10,8 +11,8 @@ class PhrasesTest {
     @Test
     fun `stop and avoid follow the SRS wording`() {
         assertEquals("Stop. Chair ahead.", Phrases.stop("chair"))
-        assertEquals("Person ahead. Move left.", Phrases.avoid("person", Phrases.Side.LEFT))
-        assertEquals("Dining table ahead. Move right.", Phrases.avoid("dining table", Phrases.Side.RIGHT))
+        assertEquals("Person ahead. Move left.", Phrases.avoid("person", Side.LEFT))
+        assertEquals("Dining table ahead. Move right.", Phrases.avoid("dining table", Side.RIGHT))
     }
 
     @Test

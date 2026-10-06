@@ -1,5 +1,6 @@
 package com.example.capsight.ui.debug
 
+import com.example.capsight.perception.Side
 import android.app.Application
 import android.content.Intent
 import android.graphics.Bitmap
@@ -121,7 +122,7 @@ class DebugViewModel(app: Application) : AndroidViewModel(app) {
         when (test) {
             SpeechTest.CLEAR -> speaker.say(Phrases.PATH_CLEAR, Priority.CLEAR, sp.clearRepeatMs)
             SpeechTest.AVOID -> speaker.say(
-                Phrases.avoid("chair", Phrases.Side.LEFT), Priority.AVOID, sp.phraseCooldownMs,
+                Phrases.avoid("chair", Side.LEFT), Priority.AVOID, sp.phraseCooldownMs,
             )
             SpeechTest.STOP -> speaker.say(Phrases.stop("chair"), Priority.STOP, sp.stopCooldownMs)
             // Single slot: the first phrase plays, "Path blocked" is replaced by the more urgent
@@ -129,7 +130,7 @@ class DebugViewModel(app: Application) : AndroidViewModel(app) {
             SpeechTest.BURST -> {
                 speaker.say(Phrases.PATH_CLEAR, Priority.CLEAR, 0)
                 speaker.say(Phrases.PATH_BLOCKED, Priority.BLOCKED, 0)
-                speaker.say(Phrases.avoid("person", Phrases.Side.RIGHT), Priority.AVOID, 0)
+                speaker.say(Phrases.avoid("person", Side.RIGHT), Priority.AVOID, 0)
                 speaker.say(Phrases.PATH_CLEAR, Priority.CLEAR, 0)
             }
             // FR-VOICE-03: a P0 cuts off a long sentence in the middle.
