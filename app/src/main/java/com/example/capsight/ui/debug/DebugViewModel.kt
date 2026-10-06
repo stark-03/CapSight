@@ -22,6 +22,9 @@ import com.example.capsight.settings.CameraSettings
 import com.example.capsight.settings.DetectionSettings
 import com.example.capsight.settings.SourceKind
 import com.example.capsight.settings.SpeechSettings
+import com.example.capsight.settings.NavigationSettings
+import com.example.capsight.perception.Perception
+import com.example.capsight.perception.PerceptionParams
 import com.example.capsight.camera.LinkState
 import com.example.capsight.voice.Phrases
 import com.example.capsight.voice.Priority
@@ -40,7 +43,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /**
- * Hosts the frame receiver, detector and speaker for the debug screen (FR-APP-05, steps 1-3).
+ * Hosts the frame receiver, detector, perception and speaker for the debug screen (FR-APP-05, steps 1-4).
  *
  * TEMPORARY OWNER: from build step 7 NavigationService owns the receiver so it
  * survives the screen turning off, and this ViewModel only observes it. Until then
@@ -63,6 +66,33 @@ class DebugViewModel(app: Application) : AndroidViewModel(app) {
     val speechSettings: StateFlow<SpeechSettings?> =
         appSettings.speech.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val speech = speaker.state
+    val navigationSettings: StateFlow<NavigationSettings?> =
+        appSettings.navigation.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /** Detections with distance and corridor status, for the overlay (build step 4). */
+    val perceived: StateFlow<PerceivedView> = combine(
+        detection,
+        settings.filterNotNull(),
+        detectionSettings.filterNotNull(),
+        navigationSettings.filterNotNull(),
+    ) { det, cam, ds, nav ->
+        val (fov, fovSource) = fovFor(cam.source, det.frameFovDeg, nav)
+        val params = PerceptionParams(
+            fovDeg = fov,
+            minConfidence = ds.minConfidence,
+            skipUnreliable = nav.skipUnreliable,
+            corridorHalfWidthM = nav.corridorHalfWidthM,
+            warnDistanceM = nav.warnDistanceM,
+            stopDistanceM = nav.stopDistanceM,
+        )
+        PerceivedView(
+            objects = Perception.perceive(det.detections, det.frameWidth, det.frameHeight, params),
+            frameWidth = det.frameWidth,
+            frameHeight = det.frameHeight,
+            fovDeg = fov,
+            fovSource = fovSource,
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), PerceivedView())
 
     private val _running = MutableStateFlow(false)
     val running: StateFlow<Boolean> = _running.asStateFlow()
@@ -191,7 +221,17 @@ class DebugViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Which horizontal FOV turns pixels into metres for this source (CLAUDE.md §8, §8.1). */
+    private fun fovFor(source: SourceKind, frameFov: Float?, nav: NavigationSettings): Pair<Double, String> =
+        when (source) {
+            SourceKind.ESP32 -> nav.capFovDeg to "cap setting"
+            SourceKind.PHONE_CAMERA ->
+                frameFov?.let { it.toDouble() to "phone camera" } ?: (nav.phoneFovDeg to "phone default")
+            SourceKind.VIDEO_FILE -> nav.phoneFovDeg to "video default"
+        }
+
     private companion object {
+        const val STOP_TIMEOUT_MS = 5_000L
         const val INTERRUPT_SAMPLE =
             "This is a long test sentence that keeps going so that you can hear it being cut off."
         const val INTERRUPT_AFTER_MS = 1_200L

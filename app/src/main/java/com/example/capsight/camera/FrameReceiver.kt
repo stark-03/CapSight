@@ -87,7 +87,7 @@ class FrameReceiver(private val clock: () -> Long = SystemClock::elapsedRealtime
                 fps.onFrame(now)
                 width = bitmap.width
                 height = bitmap.height
-                Frame(bitmap, seq, now)
+                Frame(bitmap, seq, now, source.horizontalFovDeg)
             }
             _frame.value = f
         }

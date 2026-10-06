@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -62,6 +63,25 @@ data class SpeechSettings(
     val announceCameraLink: Boolean = true,
 )
 
+/** Navigation thresholds (FR-NAV-03, FR-DIST-05). Defaults from CLAUDE.md §8. */
+data class NavigationSettings(
+    val stopDistanceM: Double = 1.2,
+    val warnDistanceM: Double = 2.5,
+    val stairsWarnM: Double = 4.0,
+    /** BODY_HALF_WIDTH_M: shoulder width plus clearance. */
+    val corridorHalfWidthM: Double = 0.55,
+    /** Skip keyboard, book, cup, laptop (FR-OBS-03). */
+    val skipUnreliable: Boolean = true,
+    /** Ticks a vanished obstacle is still reported (0.6 s at 10 Hz). */
+    val holdTicks: Int = 6,
+    /** Cap camera horizontal FOV. 54 until measured (§8.1) - it scales every distance. */
+    val capFovDeg: Double = 54.0,
+    /** Used for recorded videos, and for the phone camera if it cannot report its own FOV. */
+    val phoneFovDeg: Double = 65.0,
+    /** Camera height is about this minus 10 cm (ground-plane distance, later). */
+    val userHeightCm: Int = 165,
+)
+
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
 class AppSettings(context: Context) {
@@ -100,6 +120,21 @@ class AppSettings(context: Context) {
         )
     }
 
+    val navigation: Flow<NavigationSettings> = store.data.map { p ->
+        val d = NavigationSettings()
+        NavigationSettings(
+            stopDistanceM = p[STOP_DISTANCE_M]?.toDouble() ?: d.stopDistanceM,
+            warnDistanceM = p[WARN_DISTANCE_M]?.toDouble() ?: d.warnDistanceM,
+            stairsWarnM = p[STAIRS_WARN_M]?.toDouble() ?: d.stairsWarnM,
+            corridorHalfWidthM = p[CORRIDOR_HALF_WIDTH_M]?.toDouble() ?: d.corridorHalfWidthM,
+            skipUnreliable = p[SKIP_UNRELIABLE] ?: d.skipUnreliable,
+            holdTicks = p[HOLD_TICKS] ?: d.holdTicks,
+            capFovDeg = p[CAP_FOV_DEG]?.toDouble() ?: d.capFovDeg,
+            phoneFovDeg = p[PHONE_FOV_DEG]?.toDouble() ?: d.phoneFovDeg,
+            userHeightCm = p[USER_HEIGHT_CM] ?: d.userHeightCm,
+        )
+    }
+
     suspend fun setSpeechRate(rate: Float) = store.edit { it[SPEECH_RATE] = rate }
 
     suspend fun setAnnounceCameraLink(on: Boolean) = store.edit { it[ANNOUNCE_LINK] = on }
@@ -126,6 +161,15 @@ class AppSettings(context: Context) {
         val USE_GPU = booleanPreferencesKey("det_use_gpu")
         val SHOW_ALL_CLASSES = booleanPreferencesKey("det_show_all_classes")
         val SPEECH_RATE = floatPreferencesKey("speech_rate")
+        val STOP_DISTANCE_M = floatPreferencesKey("nav_stop_distance_m")
+        val WARN_DISTANCE_M = floatPreferencesKey("nav_warn_distance_m")
+        val STAIRS_WARN_M = floatPreferencesKey("nav_stairs_warn_m")
+        val CORRIDOR_HALF_WIDTH_M = floatPreferencesKey("nav_corridor_half_width_m")
+        val SKIP_UNRELIABLE = booleanPreferencesKey("nav_skip_unreliable")
+        val HOLD_TICKS = intPreferencesKey("nav_hold_ticks")
+        val CAP_FOV_DEG = floatPreferencesKey("nav_cap_fov_deg")
+        val PHONE_FOV_DEG = floatPreferencesKey("nav_phone_fov_deg")
+        val USER_HEIGHT_CM = intPreferencesKey("nav_user_height_cm")
         val SPEECH_VOLUME = floatPreferencesKey("speech_volume")
         val PHRASE_COOLDOWN_MS = longPreferencesKey("speech_phrase_cooldown_ms")
         val STOP_COOLDOWN_MS = longPreferencesKey("speech_stop_cooldown_ms")

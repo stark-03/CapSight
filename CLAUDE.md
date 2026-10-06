@@ -360,7 +360,7 @@ Defaults (from `reference/blenav/config/config.yaml` → `first_person`, and the
 | Hold after dropout | 6 ticks (0.6 s) | a missed frame is never "all clear" |
 | Phrase cooldown | 3 s | per identical phrase; P0 uses 2 s |
 | "Path clear" repeat | 6 s | |
-| Horizontal FOV | **measure it** (§8.1); 54° until measured | wrong FOV scales every distance |
+| Horizontal FOV | **measure it** (§8.1); 54° until measured | wrong FOV scales every distance. Applies to the cap camera. The phone-camera test source computes its own FOV from Camera2 focal length + sensor size; recorded videos use a 65° phone default (both settings). |
 | User height | 165 cm | camera height ≈ height − 10 cm (for later ground-plane distance) |
 
 Priority policy (lower wins) — SRS §4.7 wording is authoritative for speech:

@@ -6,7 +6,15 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.util.Size
+import android.hardware.camera2.CameraCharacteristics
+import android.util.Log
+import androidx.annotation.OptIn
+import androidx.camera.camera2.interop.Camera2CameraInfo
+import androidx.camera.camera2.interop.ExperimentalCamera2Interop
+import androidx.camera.core.CameraInfo
 import androidx.camera.core.CameraSelector
+import com.example.capsight.TAG
+import com.example.capsight.perception.CameraFov
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
@@ -35,6 +43,16 @@ import java.util.concurrent.Executors
 class PhoneCameraSource(private val context: Context) : FrameSource {
 
     override val label = "Phone camera"
+
+    @Volatile
+    override var horizontalFovDeg: Float? = null
+        private set
+
+    /** Lens and sensor geometry, read once the camera is bound. */
+    private class Optics(val focalMm: Double, val activeWidthMm: Double, val activeHeightMm: Double)
+
+    @Volatile
+    private var optics: Optics? = null
 
     override suspend fun run(onFrame: (Bitmap) -> Unit, onStatus: (String) -> Unit) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
@@ -65,7 +83,16 @@ class PhoneCameraSource(private val context: Context) : FrameSource {
         var first = true
         analysis.setAnalyzer(executor) { image ->
             image.use {
-                val bitmap = rotate(it.toBitmap(), it.imageInfo.rotationDegrees)
+                val rotation = it.imageInfo.rotationDegrees
+                if (horizontalFovDeg == null) {
+                    optics?.let { o ->
+                        horizontalFovDeg = CameraFov.horizontalFovDeg(
+                            o.focalMm, o.activeWidthMm, o.activeHeightMm, it.width, it.height, rotation,
+                        ).toFloat()
+                        Log.i(TAG, "phone camera horizontal FOV $horizontalFovDeg deg (${it.width}x${it.height}, rot $rotation)")
+                    }
+                }
+                val bitmap = rotate(it.toBitmap(), rotation)
                 if (first) {
                     onStatus("Streaming ${bitmap.width}x${bitmap.height} from phone camera")
                     first = false
@@ -75,7 +102,8 @@ class PhoneCameraSource(private val context: Context) : FrameSource {
         }
         try {
             withContext(Dispatchers.Main) {
-                provider.bindToLifecycle(owner, CameraSelector.DEFAULT_BACK_CAMERA, analysis)
+                val camera = provider.bindToLifecycle(owner, CameraSelector.DEFAULT_BACK_CAMERA, analysis)
+                optics = readOptics(camera.cameraInfo)
                 owner.start()
             }
             awaitCancellation()
@@ -87,6 +115,28 @@ class PhoneCameraSource(private val context: Context) : FrameSource {
             analysis.clearAnalyzer()
             executor.shutdown()
         }
+    }
+
+    /** Focal length and active sensor size from Camera2, or null if the device hides them. */
+    @OptIn(ExperimentalCamera2Interop::class)
+    private fun readOptics(info: CameraInfo): Optics? = try {
+        val c = Camera2CameraInfo.from(info)
+        val focal = c.getCameraCharacteristic(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)?.firstOrNull()
+        val physical = c.getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE)
+        val pixels = c.getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_PIXEL_ARRAY_SIZE)
+        val active = c.getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)
+        if (focal == null || physical == null || pixels == null || active == null || focal <= 0f) {
+            null
+        } else {
+            Optics(
+                focalMm = focal.toDouble(),
+                activeWidthMm = physical.width.toDouble() * active.width() / pixels.width,
+                activeHeightMm = physical.height.toDouble() * active.height() / pixels.height,
+            )
+        }
+    } catch (e: RuntimeException) {
+        Log.w(TAG, "could not read camera optics; using the FOV setting", e)
+        null
     }
 
     private fun rotate(bitmap: Bitmap, degrees: Int): Bitmap {

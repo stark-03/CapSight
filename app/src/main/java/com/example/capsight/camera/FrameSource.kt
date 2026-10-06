@@ -2,8 +2,11 @@ package com.example.capsight.camera
 
 import android.graphics.Bitmap
 
-/** One decoded frame, stamped by [FrameReceiver] with SystemClock.elapsedRealtime(). */
-class Frame(val bitmap: Bitmap, val seq: Long, val timestampMs: Long) {
+/**
+ * One decoded frame, stamped by [FrameReceiver] with SystemClock.elapsedRealtime().
+ * [fovDeg] is the horizontal field of view when the source knows it (phone camera), else null.
+ */
+class Frame(val bitmap: Bitmap, val seq: Long, val timestampMs: Long, val fovDeg: Float? = null) {
     val width: Int get() = bitmap.width
     val height: Int get() = bitmap.height
 }
@@ -16,6 +19,9 @@ class Frame(val bitmap: Bitmap, val seq: Long, val timestampMs: Long) {
 interface FrameSource {
     /** Short human-readable name for the debug screen and logs. */
     val label: String
+
+    /** Horizontal FOV of the frames, if the source can tell (CLAUDE.md §8.1 otherwise). */
+    val horizontalFovDeg: Float? get() = null
 
     /**
      * Runs until the calling coroutine is cancelled. Delivers each upright frame to

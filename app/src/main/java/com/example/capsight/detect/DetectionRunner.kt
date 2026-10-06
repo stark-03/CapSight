@@ -24,6 +24,8 @@ data class DetectionState(
     val frameSeq: Long = 0,
     val frameWidth: Int = 0,
     val frameHeight: Int = 0,
+    /** Field of view the source reported for that frame, or null. */
+    val frameFovDeg: Float? = null,
     val detections: List<Detection> = emptyList(),
     val inferenceMs: Long = 0,
     val totalMs: Long = 0,
@@ -81,6 +83,7 @@ class DetectionRunner(private val context: Context) {
                 frameSeq = frame.seq,
                 frameWidth = frame.width,
                 frameHeight = frame.height,
+                frameFovDeg = frame.fovDeg,
                 detections = out.detections,
                 inferenceMs = out.inferenceMs,
                 totalMs = now - t0,

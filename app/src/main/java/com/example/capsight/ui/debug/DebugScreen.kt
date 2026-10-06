@@ -66,6 +66,7 @@ import com.example.capsight.camera.Frame
 import com.example.capsight.camera.LinkState
 import com.example.capsight.camera.ReceiverStatus
 import com.example.capsight.detect.DetectionState
+import com.example.capsight.perception.Threat
 import com.example.capsight.settings.SpeechSettings
 import com.example.capsight.voice.SpeakerState
 import androidx.compose.material3.Slider
@@ -89,6 +90,7 @@ fun DebugScreen(modifier: Modifier = Modifier, vm: DebugViewModel = viewModel())
     val frame by vm.frame.collectAsStateWithLifecycle()
     val running by vm.running.collectAsStateWithLifecycle()
     val detection by vm.detection.collectAsStateWithLifecycle()
+    val perceived by vm.perceived.collectAsStateWithLifecycle()
     val detectionSettings by vm.detectionSettings.collectAsStateWithLifecycle()
     val speech by vm.speech.collectAsStateWithLifecycle()
     val speechSettings by vm.speechSettings.collectAsStateWithLifecycle()
@@ -137,7 +139,7 @@ fun DebugScreen(modifier: Modifier = Modifier, vm: DebugViewModel = viewModel())
             modifier = Modifier.semantics { heading() },
         )
         StatusBanner(running, status)
-        FrameView(frame, status, running, detection)
+        FrameView(frame, status, running, detection, perceived)
         StartStopButton(running, onStart = onStart, onStop = vm::stop)
         if (permissionDenied) {
             Text(
@@ -147,7 +149,7 @@ fun DebugScreen(modifier: Modifier = Modifier, vm: DebugViewModel = viewModel())
         }
         CaptionBlock(speech)
         StatsBlock(status)
-        DetectionBlock(detection)
+        DetectionBlock(detection, perceived)
         HorizontalDivider()
         detectionSettings?.let { d ->
             Text("Detection", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
@@ -197,7 +199,13 @@ private fun StatusBanner(running: Boolean, status: ReceiverStatus) {
 }
 
 @Composable
-private fun FrameView(frame: Frame?, status: ReceiverStatus, running: Boolean, detection: DetectionState) {
+private fun FrameView(
+    frame: Frame?,
+    status: ReceiverStatus,
+    running: Boolean,
+    detection: DetectionState,
+    perceived: PerceivedView,
+) {
     Box(
         Modifier
             .fillMaxWidth()
@@ -213,11 +221,11 @@ private fun FrameView(frame: Frame?, status: ReceiverStatus, running: Boolean, d
                 alpha = if (status.link == LinkState.CONNECTED) 1f else 0.35f,
                 modifier = Modifier.fillMaxSize(),
             )
-            DetectionOverlay(detection, Modifier.fillMaxSize())
+            DetectionOverlay(perceived, Modifier.fillMaxSize())
         }
         if (running) {
             Text(
-                overlayText(status, detection),
+                overlayText(status, detection, perceived),
                 color = Color.White,
                 fontFamily = FontFamily.Monospace,
                 fontSize = 13.sp,
@@ -242,7 +250,7 @@ private fun FrameView(frame: Frame?, status: ReceiverStatus, running: Boolean, d
     }
 }
 
-private fun overlayText(s: ReceiverStatus, d: DetectionState): String {
+private fun overlayText(s: ReceiverStatus, d: DetectionState, p: PerceivedView): String {
     val fps = String.format(Locale.US, "%.1f fps", s.fps)
     val size = if (s.frameWidth > 0) "${s.frameWidth}x${s.frameHeight}" else "no frame"
     val age = s.frameAgeMs?.let { "age ${it} ms" } ?: "age -"
@@ -251,7 +259,8 @@ private fun overlayText(s: ReceiverStatus, d: DetectionState): String {
         !d.running -> "detector: loading"
         else -> String.format(Locale.US, "det %.1f fps  %s  infer %d ms", d.fps, d.backend, d.inferenceMs)
     }
-    return "cam $fps  $size  $age\n$det"
+    val fov = if (p.fovDeg > 0) String.format(Locale.US, "FOV %.1f° (%s)", p.fovDeg, p.fovSource) else ""
+    return "cam $fps  $size  $age\n$det\n$fov"
 }
 
 @Composable
@@ -282,13 +291,19 @@ private fun StatsBlock(s: ReceiverStatus) {
 }
 
 @Composable
-private fun DetectionBlock(d: DetectionState) {
+private fun DetectionBlock(d: DetectionState, p: PerceivedView) {
     if (d.error != null) Text(d.error, color = Red, style = MaterialTheme.typography.bodyMedium)
     if (!d.running) return
-    val found = if (d.detections.isEmpty()) {
+    val found = if (p.objects.isEmpty()) {
         "nothing"
     } else {
-        d.detections.joinToString { "${it.label} ${String.format(Locale.US, "%.2f", it.score)}" }
+        p.objects.joinToString { o ->
+            objectLabel(o) + when (o.threat) {
+                Threat.STOP -> " STOP"
+                Threat.WARN -> " WARN"
+                Threat.NONE -> ""
+            }
+        }
     }
     Text(
         "Detections: $found   (frame ${d.frameSeq}, ${d.totalMs} ms total)",
