@@ -59,10 +59,23 @@ class EgocentricTest {
 
     @Test
     fun `size priors are plausible and complete`() {
-        assertTrue(SizePriors.HEIGHTS_M.values.all { it > 0.02 && it < 2.5 })
-        assertTrue(SizePriors.WIDTHS_M.values.all { it > 0.02 && it < 2.5 })
+        // Lower bound: a keyboard is genuinely ~3 cm. Upper bound catches a mis-typed prior: nothing
+        // indoors is taller than a person; outdoors a bus or truck is ~3 m.
+        val outdoor = setOf("car", "motorcycle", "bus", "truck", "dog")
+        SizePriors.HEIGHTS_M.forEach { (k, v) -> assertTrue("$k $v", v > 0.02 && v < if (k in outdoor) 4.0 else 2.5) }
+        SizePriors.WIDTHS_M.forEach { (k, v) -> assertTrue("$k $v", v > 0.02 && v < if (k in outdoor) 4.0 else 2.5) }
         assertEquals(SizePriors.HEIGHTS_M.keys, SizePriors.WIDTHS_M.keys)
         assertTrue(SizePriors.HEIGHTS_M.keys.containsAll(SizePriors.UNRELIABLE_SMALL))
+    }
+
+    @Test
+    fun `a car ahead at 5 m from its height, and side-on errs nearer`() {
+        val carH = SizePriors.HEIGHTS_M.getValue("car")
+        val front = det("car", 300.0, 100.0, 300 + f * 1.80 / 5.0, 100 + f * carH / 5.0)
+        assertEquals(5.0, Egocentric.estimateDistance(front, f, frameH = h)!!, 1e-4)
+        // Side-on: 4.4 m long box at 5 m -> very wide -> width rule with the 1.8 m prior says nearer.
+        val side = det("car", 100.0, 100.0, 100 + f * 4.4 / 5.0, 100 + f * carH / 5.0)
+        assertTrue(Egocentric.estimateDistance(side, f, frameH = h)!! < 5.0)
     }
 
     @Test

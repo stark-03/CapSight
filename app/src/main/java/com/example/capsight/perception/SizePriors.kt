@@ -1,7 +1,8 @@
 package com.example.capsight.perception
 
 /**
- * Real-world object sizes, copied exactly from reference/blenav/egocentric.py (CLAUDE.md §7.3).
+ * Real-world object sizes, copied exactly from reference/blenav/egocentric.py (CLAUDE.md §7.3),
+ * plus the outdoor classes added on 7 Oct 2026.
  *
  * These are size *priors*: a real chair is 0.75-1.05 m tall, so every distance derived from
  * them carries roughly 25% error. That is the price of monocular distance without a depth sensor.
@@ -27,6 +28,12 @@ object SizePriors {
         "keyboard" to 0.03,
         "book" to 0.05,
         "vase" to 0.30,
+        // Outdoor classes - not from Phase 2 (user decision 7 Oct 2026).
+        "car" to 1.50,
+        "motorcycle" to 1.10,
+        "bus" to 3.00,
+        "truck" to 3.00,
+        "dog" to 0.55,
     )
 
     /** Typical widths, used when the height cannot be trusted (truncated boxes). */
@@ -49,6 +56,13 @@ object SizePriors {
         "keyboard" to 0.45,
         "book" to 0.15,
         "vase" to 0.20,
+        // Outdoor widths are FRONT/BACK views. Seen side-on these vehicles and dogs look wider, so
+        // the width-based estimate comes out nearer than the truth - the safe direction of error.
+        "car" to 1.80,
+        "motorcycle" to 0.80,
+        "bus" to 2.50,
+        "truck" to 2.50,
+        "dog" to 0.30,
     )
 
     /**

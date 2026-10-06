@@ -17,11 +17,13 @@ object CocoLabels {
 
     const val PERSON = 0
 
-    /**
-     * Obstacle classes from reference/blenav/detector.py (OBSTACLE_CLASS_IDS), CLAUDE.md §7.3.
-     * Outdoor classes (car, bus, dog, ...) are an open decision - they need size priors first.
-     */
-    val OBSTACLES: Set<Int> = setOf(1, 13, 24, 26, 28, 39, 41, 56, 57, 58, 59, 60, 62, 63, 66, 73, 75)
+    /** Indoor obstacle classes from reference/blenav/detector.py (OBSTACLE_CLASS_IDS), CLAUDE.md §7.3. */
+    val INDOOR_OBSTACLES: Set<Int> = setOf(1, 13, 24, 26, 28, 39, 41, 56, 57, 58, 59, 60, 62, 63, 66, 73, 75)
+
+    /** Outdoor obstacles added 7 Oct 2026 (user decision): car, motorcycle, bus, truck, dog. */
+    val OUTDOOR_OBSTACLES: Set<Int> = setOf(2, 3, 5, 7, 16)
+
+    val OBSTACLES: Set<Int> = INDOOR_OBSTACLES + OUTDOOR_OBSTACLES
 
     /** Everything the navigation pipeline uses: person plus the obstacles. */
     val NAVIGATION: Set<Int> = OBSTACLES + PERSON

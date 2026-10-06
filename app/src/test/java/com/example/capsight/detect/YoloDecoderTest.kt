@@ -54,7 +54,8 @@ class YoloDecoderTest {
 
     @Test
     fun `class filter keeps only requested classes`() {
-        val out = output(cand(0.3f, 0.5f, 0.2f, 0.2f, 5, 0.9f), cand(0.7f, 0.5f, 0.2f, 0.2f, 0, 0.8f))
+        // 9 = traffic light, not a navigation class.
+        val out = output(cand(0.3f, 0.5f, 0.2f, 0.2f, 9, 0.9f), cand(0.7f, 0.5f, 0.2f, 0.2f, 0, 0.8f))
         val dets = decoder.decode(out, 0.4f, vga, CocoLabels.NAVIGATION)
         assertEquals(listOf("person"), dets.map { it.label })
     }
@@ -98,9 +99,11 @@ class YoloDecoderTest {
     }
 
     @Test
-    fun `navigation filter drops the bus (outdoor classes are an open decision)`() {
+    fun `navigation classes include the bus (outdoor classes added), a person-only filter drops it`() {
         val lb = Letterbox.compute(810, 1080, 320)
-        val dets = decoder.decode(busOutput(), 0.40f, lb, CocoLabels.NAVIGATION)
+        val nav = decoder.decode(busOutput(), 0.40f, lb, CocoLabels.NAVIGATION)
+        assertEquals(listOf("person", "bus", "person", "person"), nav.map { it.label })
+        val dets = decoder.decode(busOutput(), 0.40f, lb, setOf(CocoLabels.PERSON))
         assertEquals(List(3) { "person" }, dets.map { it.label })
         assertTrue(dets.all { it.right <= 810f && it.bottom <= 1080f })
     }

@@ -24,8 +24,8 @@ Read this whole file before changing code. When a request conflicts with it, ask
 | Distance method | Apparent object size (ported from `egocentric.py`), later fused with ground-plane geometry once the IMU exists. | Works with no calibration rig; proven in Phase 2. |
 | Names | **Keep as generated.** Package/applicationId `com.example.capsight`, project name "Cap Sight", hotspot `BLENAV_CAM`. Do not rename. | The app will not be published on the Play Store, so `com.example` is acceptable. User decision. |
 
-Open decisions — **ask the user before acting on these**:
-1. Extra outdoor classes (car, motorcycle, bus, truck, dog) — need size priors before they can get a distance (§7.3).
+Open decisions — **ask the user before acting on these**: none right now.
+(Resolved 7 Oct 2026: outdoor classes car, motorcycle, bus, truck, dog added with size priors, §7.3.)
 
 ---
 
@@ -337,6 +337,9 @@ Person 0; obstacles: 1 bicycle, 13 bench, 24 backpack, 26 handbag, 28 suitcase, 
 41 cup, 56 chair, 57 couch, 58 potted plant, 59 bed, 60 dining table, 62 tv, 63 laptop,
 66 keyboard, 73 book, 75 vase. Size priors for distance: `OBJECT_HEIGHTS_M` / `OBJECT_WIDTHS_M`
 in `reference/blenav/egocentric.py` — copy them exactly.
+Outdoor obstacles (user decision 7 Oct 2026): 2 car (h 1.50, w 1.80 m), 3 motorcycle (1.10, 0.80),
+5 bus (3.00, 2.50), 7 truck (3.00, 2.50), 16 dog (0.55, 0.30). Widths are front/back views, so a
+side-on view gives a nearer (safe) estimate.
 
 Known gap: the SRS (FR-DET-02) also lists **door, pole/sign and stairs**. These are **not COCO
 classes**; standard YOLOv8n cannot detect them. They need a fine-tuned model (stairs is
