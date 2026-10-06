@@ -13,7 +13,10 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.capsight.detect.CocoLabels
+import com.example.capsight.path.Zone
+import com.example.capsight.path.Zones
 import com.example.capsight.perception.PerceivedObject
+import com.example.capsight.perception.Side
 import com.example.capsight.perception.Threat
 import java.util.Locale
 import kotlin.math.min
@@ -25,7 +28,25 @@ data class PerceivedView(
     val frameHeight: Int = 0,
     val fovDeg: Double = 0.0,
     val fovSource: String = "",
+    /** FR-PATH-01 lanes and the side the zones favour (no hysteresis here; that is step 6). */
+    val zones: Zones? = null,
+    val bestSide: Side? = null,
 )
+
+/** "L 3.1 m | C 1.5 m person | R clear  -> RIGHT" */
+fun zonesText(v: PerceivedView): String {
+    val z = v.zones ?: return ""
+    fun lane(name: String, zone: Zone) = when (val m = zone.nearestM) {
+        null -> "$name clear"
+        else -> String.format(Locale.US, "%s %.1f m%s", name, m, if (zone.blocked) "!" else "")
+    }
+    val steer = when {
+        !z.centre.blocked -> "ahead"
+        v.bestSide == null -> "BLOCKED"
+        else -> v.bestSide.name
+    }
+    return "${lane("L", z.left)} | ${lane("C", z.centre)} | ${lane("R", z.right)}  -> $steer"
+}
 
 private val PersonColour = Color(0xFF00E5FF)
 private val ObstacleColour = Color(0xFFFFD600)

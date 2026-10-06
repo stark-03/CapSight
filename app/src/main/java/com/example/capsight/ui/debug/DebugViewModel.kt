@@ -23,6 +23,8 @@ import com.example.capsight.settings.DetectionSettings
 import com.example.capsight.settings.SourceKind
 import com.example.capsight.settings.SpeechSettings
 import com.example.capsight.settings.NavigationSettings
+import com.example.capsight.path.ZoneAnalyzer
+import com.example.capsight.path.ZoneParams
 import com.example.capsight.perception.Perception
 import com.example.capsight.perception.PerceptionParams
 import com.example.capsight.camera.LinkState
@@ -85,12 +87,18 @@ class DebugViewModel(app: Application) : AndroidViewModel(app) {
             warnDistanceM = nav.warnDistanceM,
             stopDistanceM = nav.stopDistanceM,
         )
+        val objects = Perception.perceive(det.detections, det.frameWidth, det.frameHeight, params)
+        val measured = objects.mapNotNull { it.relative }
+        val zones = ZoneAnalyzer.analyze(measured, ZoneParams(nav.corridorHalfWidthM, nav.warnDistanceM))
+        val corridor = objects.filter { it.inCorridor }.mapNotNull { it.relative }
         PerceivedView(
-            objects = Perception.perceive(det.detections, det.frameWidth, det.frameHeight, params),
+            objects = objects,
             frameWidth = det.frameWidth,
             frameHeight = det.frameHeight,
             fovDeg = fov,
             fovSource = fovSource,
+            zones = if (det.running) zones else null,
+            bestSide = ZoneAnalyzer.bestSide(zones, corridor, nav.corridorHalfWidthM),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), PerceivedView())
 

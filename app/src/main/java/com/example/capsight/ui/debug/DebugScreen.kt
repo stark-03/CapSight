@@ -260,7 +260,8 @@ private fun overlayText(s: ReceiverStatus, d: DetectionState, p: PerceivedView):
         else -> String.format(Locale.US, "det %.1f fps  %s  infer %d ms", d.fps, d.backend, d.inferenceMs)
     }
     val fov = if (p.fovDeg > 0) String.format(Locale.US, "FOV %.1f° (%s)", p.fovDeg, p.fovSource) else ""
-    return "cam $fps  $size  $age\n$det\n$fov"
+    val zones = zonesText(p)
+    return listOf("cam $fps  $size  $age", det, fov, zones).filter { it.isNotEmpty() }.joinToString("\n")
 }
 
 @Composable

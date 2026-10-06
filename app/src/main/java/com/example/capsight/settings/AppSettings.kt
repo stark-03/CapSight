@@ -74,6 +74,10 @@ data class NavigationSettings(
     val skipUnreliable: Boolean = true,
     /** Ticks a vanished obstacle is still reported (0.6 s at 10 Hz). */
     val holdTicks: Int = 6,
+    /** FR-PATH-04: keep a chosen steering side at least this long... */
+    val sideHoldMs: Long = 2_000L,
+    /** ...unless the other side is clearer by more than this. */
+    val sideSwitchMarginM: Double = 0.5,
     /** Cap camera horizontal FOV. 54 until measured (§8.1) - it scales every distance. */
     val capFovDeg: Double = 54.0,
     /** Used for recorded videos, and for the phone camera if it cannot report its own FOV. */
@@ -129,6 +133,8 @@ class AppSettings(context: Context) {
             corridorHalfWidthM = p[CORRIDOR_HALF_WIDTH_M]?.toDouble() ?: d.corridorHalfWidthM,
             skipUnreliable = p[SKIP_UNRELIABLE] ?: d.skipUnreliable,
             holdTicks = p[HOLD_TICKS] ?: d.holdTicks,
+            sideHoldMs = p[SIDE_HOLD_MS] ?: d.sideHoldMs,
+            sideSwitchMarginM = p[SIDE_SWITCH_MARGIN_M]?.toDouble() ?: d.sideSwitchMarginM,
             capFovDeg = p[CAP_FOV_DEG]?.toDouble() ?: d.capFovDeg,
             phoneFovDeg = p[PHONE_FOV_DEG]?.toDouble() ?: d.phoneFovDeg,
             userHeightCm = p[USER_HEIGHT_CM] ?: d.userHeightCm,
@@ -167,6 +173,8 @@ class AppSettings(context: Context) {
         val CORRIDOR_HALF_WIDTH_M = floatPreferencesKey("nav_corridor_half_width_m")
         val SKIP_UNRELIABLE = booleanPreferencesKey("nav_skip_unreliable")
         val HOLD_TICKS = intPreferencesKey("nav_hold_ticks")
+        val SIDE_HOLD_MS = longPreferencesKey("nav_side_hold_ms")
+        val SIDE_SWITCH_MARGIN_M = floatPreferencesKey("nav_side_switch_margin_m")
         val CAP_FOV_DEG = floatPreferencesKey("nav_cap_fov_deg")
         val PHONE_FOV_DEG = floatPreferencesKey("nav_phone_fov_deg")
         val USER_HEIGHT_CM = intPreferencesKey("nav_user_height_cm")
