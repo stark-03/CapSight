@@ -13,6 +13,9 @@ object Phrases {
     const val PATH_BLOCKED = "Path blocked. Stop and turn."
     const val PATH_CLEAR = "Path clear."
 
+    /** FR-NAV-05: on any internal failure, say "Stop" rather than go silent. */
+    const val FAIL_SAFE = "Stop."
+
     /** P0: "Stop. Chair ahead." */
     fun stop(label: String) = "Stop. ${spoken(label)} ahead."
 

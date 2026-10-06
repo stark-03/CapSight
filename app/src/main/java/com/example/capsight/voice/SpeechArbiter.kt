@@ -10,6 +10,9 @@ object Priority {
 
     /** Status announcements ("Camera connected") - below every navigation instruction. */
     const val INFO = 5
+
+    /** Nothing to say. */
+    const val IDLE = 6
 }
 
 /** One phrase handed to the speech engine. */
