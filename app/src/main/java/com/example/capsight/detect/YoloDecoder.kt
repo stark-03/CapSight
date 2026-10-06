@@ -12,14 +12,19 @@ package com.example.capsight.detect
  * Pure Kotlin, no allocation per candidate below the score threshold.
  */
 class YoloDecoder(
-    private val numClasses: Int = CocoLabels.NAMES.size,
+    /** Class names in model output order. */
+    private val labels: List<String> = CocoLabels.NAMES,
+    /** Added to every class id, so a second model's ids do not collide with COCO's. */
+    private val classIdOffset: Int = 0,
     private val iou: Float = Nms.DEFAULT_IOU,
 ) {
+    private val numClasses = labels.size
+
     /**
      * @param output the flat output tensor
      * @param minScore drop candidates whose best class score is below this (setting, default 0.40)
      * @param letterbox how the frame was fitted into the model input
-     * @param classes keep only these class ids; null keeps all
+     * @param classes keep only these model class ids (before the offset); null keeps all
      */
     fun decode(output: FloatArray, minScore: Float, letterbox: Letterbox, classes: Set<Int>?): List<Detection> {
         val channels = BOX_CHANNELS + numClasses
@@ -51,7 +56,7 @@ class YoloDecoder(
             val right = letterbox.toFrameX(cx + w / 2)
             val bottom = letterbox.toFrameY(cy + h / 2)
             if (right - left < MIN_BOX_PX || bottom - top < MIN_BOX_PX) continue
-            candidates += Detection(best, CocoLabels.name(best), bestScore, left, top, right, bottom)
+            candidates += Detection(best + classIdOffset, labels[best], bestScore, left, top, right, bottom)
         }
         return Nms.apply(candidates, iou)
     }

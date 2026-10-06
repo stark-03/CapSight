@@ -66,6 +66,19 @@ class YoloDecoderTest {
         assertEquals(0f, d.top, 0f)
     }
 
+    @Test
+    fun `second model - its own labels and shifted class ids (hazard model)`() {
+        val hazard = YoloDecoder(HazardLabels.NAMES, HazardLabels.ID_OFFSET)
+        val out = FloatArray(9 * n)
+        // One "stairs" (class 1) candidate in the centre.
+        out[0] = 0.5f; out[n] = 0.5f; out[2 * n] = 0.25f; out[3 * n] = 0.25f
+        out[(4 + 1) * n] = 0.8f
+        val d = hazard.decode(out, 0.4f, vga, null).single()
+        assertEquals("stairs", d.label)
+        assertEquals(101, d.classId)
+        assertTrue(HazardLabels.isHazard(d.classId))
+    }
+
     // ------------------------------------------------- real model output, bus.jpg
 
     /** Raw output of yolov8n_320_fp32.tflite for Ultralytics' bus.jpg (810x1080), see export notes. */

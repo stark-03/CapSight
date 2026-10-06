@@ -13,6 +13,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.capsight.detect.CocoLabels
+import com.example.capsight.detect.HazardLabels
 import com.example.capsight.path.Zone
 import com.example.capsight.path.Zones
 import com.example.capsight.perception.PerceivedObject
@@ -51,8 +52,15 @@ fun zonesText(v: PerceivedView): String {
 private val PersonColour = Color(0xFF00E5FF)
 private val ObstacleColour = Color(0xFFFFD600)
 private val OtherColour = Color(0xFFFF4081)
+private val HazardColour = Color(0xFFD500F9)
 private val WarnColour = Color(0xFFFF9100)
 private val StopColour = Color(0xFFFF1744)
+
+private fun classColour(classId: Int) = when (classId) {
+    CocoLabels.PERSON -> PersonColour
+    in CocoLabels.OBSTACLES -> ObstacleColour
+    else -> OtherColour
+}
 
 /** "chair 0.82 2.1 m" - the distance only when perception could measure one. */
 fun objectLabel(p: PerceivedObject): String {
@@ -80,10 +88,9 @@ fun DetectionOverlay(view: PerceivedView, modifier: Modifier = Modifier) {
             val colour = when (p.threat) {
                 Threat.STOP -> StopColour
                 Threat.WARN -> WarnColour
-                Threat.NONE -> when (d.classId) {
-                    CocoLabels.PERSON -> PersonColour
-                    in CocoLabels.OBSTACLES -> ObstacleColour
-                    else -> OtherColour
+                Threat.NONE -> when {
+                    HazardLabels.isHazard(d.classId) -> HazardColour
+                    else -> classColour(d.classId)
                 }
             }
             val strokeDp = if (p.threat == Threat.NONE) 2.dp else 4.dp

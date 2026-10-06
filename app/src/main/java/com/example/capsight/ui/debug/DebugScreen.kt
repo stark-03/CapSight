@@ -260,7 +260,7 @@ private fun overlayText(s: ReceiverStatus, d: DetectionState, p: PerceivedView):
     val det = when {
         d.error != null && !d.running -> "detector: error"
         !d.running -> "detector: loading"
-        else -> String.format(Locale.US, "det %.1f fps  %s  infer %d ms", d.fps, d.backend, d.inferenceMs)
+        else -> String.format(Locale.US, "det %.1f fps  %s  infer %d ms  hazards: %s", d.fps, d.backend, d.inferenceMs, d.hazards)
     }
     val fov = if (p.fovDeg > 0) String.format(Locale.US, "FOV %.1f° (%s)", p.fovDeg, p.fovSource) else ""
     val zones = zonesText(p)

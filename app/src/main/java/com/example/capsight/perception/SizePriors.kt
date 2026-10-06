@@ -34,6 +34,13 @@ object SizePriors {
         "bus" to 3.00,
         "truck" to 3.00,
         "dog" to 0.55,
+        // Hazard model classes (ml/hazards/). Poles run out of the frame and potholes lie flat, so
+        // their HEIGHT is rarely trusted: the truncation rule switches them to WIDTH (see below).
+        "door" to 2.00,
+        "stairs" to 1.50,
+        "pole" to 5.00,
+        "sign" to 0.60,
+        "pothole" to 0.30,
     )
 
     /** Typical widths, used when the height cannot be trusted (truncated boxes). */
@@ -63,6 +70,11 @@ object SizePriors {
         "bus" to 2.50,
         "truck" to 2.50,
         "dog" to 0.30,
+        "door" to 0.90,
+        "stairs" to 1.50,
+        "pole" to 0.25,
+        "sign" to 0.60,
+        "pothole" to 0.60,
     )
 
     /**

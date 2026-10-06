@@ -122,6 +122,21 @@ class GuidanceTest {
     }
 
     @Test
+    fun `FR-DET-04 stairs ahead give the P1 caution and are held through a dropout`() {
+        val g = guidance()
+        val stairs = listOf(com.example.capsight.perception.RelativeObstacle("stairs", 3.0, 0.0, 3.0))
+        assertEquals("Caution. Stairs ahead.", g.tick(emptyList(), 0, freshStairs = stairs).message)
+        // One missed frame: still a caution, never "Path clear."
+        assertEquals("Caution. Stairs ahead.", g.tick(emptyList(), 100).message)
+    }
+
+    @Test
+    fun `a pothole in the corridor is avoided like any obstacle`() {
+        val pothole = listOf(com.example.capsight.perception.RelativeObstacle("pothole", 2.0, -0.2, 2.0))
+        assertEquals("Pothole ahead. Move left.", guidance().tick(pothole, 0).message)
+    }
+
+    @Test
     fun `camera lost wins even while an obstacle is held`() {
         val g = guidance()
         g.tick(measure(listOf(chairBox(2.0))), 0)

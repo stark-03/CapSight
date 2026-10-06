@@ -6,6 +6,7 @@ import com.example.capsight.TAG
 import com.example.capsight.camera.LinkState
 import com.example.capsight.camera.ReceiverStatus
 import com.example.capsight.detect.DetectionState
+import com.example.capsight.detect.HazardLabels
 import com.example.capsight.nav.Decision
 import com.example.capsight.nav.Guidance
 import com.example.capsight.nav.GuidanceConfig
@@ -117,14 +118,17 @@ class GuidanceLoop(private val speaker: Speaker, private val clock: () -> Long =
         val detectorFailed = det.error != null && !det.running
         val stalled = connected && det.running && det.updatedAtMs > 0 && now - det.updatedAtMs > cameraLostMs
         val ready = connected && det.running && det.updatedAtMs > 0 && !stalled
-        val fresh = if (ready) {
+        val measured = if (ready) {
             Perception.perceive(det.detections, det.frameWidth, det.frameHeight, paramsFor(det)).mapNotNull { it.relative }
         } else {
             emptyList()
         }
+        // Stairs (hazard model) feed the P1 rule; everything else is an obstacle.
+        val (stairs, fresh) = measured.partition { it.label == HazardLabels.STAIRS }
         return guidance.tick(
             fresh = fresh,
             nowMs = now,
+            freshStairs = stairs,
             cameraLost = cameraLost,
             systemFault = detectorFailed || stalled,
             perceptionReady = ready,

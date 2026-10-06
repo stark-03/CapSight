@@ -39,7 +39,13 @@ data class DetectorOutput(
  * Input layout (NCHW or NHWC) and size are read from the model, so a re-export at another
  * size or with the older TFLite exporter still works.
  */
-class YoloDetector(context: Context, preferGpu: Boolean, modelAsset: String = MODEL_ASSET) : Closeable {
+class YoloDetector(
+    context: Context,
+    preferGpu: Boolean,
+    modelAsset: String = MODEL_ASSET,
+    labels: List<String> = CocoLabels.NAMES,
+    classIdOffset: Int = 0,
+) : Closeable {
 
     /** "GPU" or "CPU xN", for the debug overlay. */
     val backend: String
@@ -51,7 +57,7 @@ class YoloDetector(context: Context, preferGpu: Boolean, modelAsset: String = MO
     private val input: ByteBuffer
     private val outputBuffer: ByteBuffer
     private val output: FloatArray
-    private val decoder = YoloDecoder()
+    private val decoder = YoloDecoder(labels, classIdOffset)
 
     // Reused every frame: letterboxed canvas and its pixels.
     private val square: Bitmap
@@ -105,7 +111,11 @@ class YoloDetector(context: Context, preferGpu: Boolean, modelAsset: String = MO
         inputSize = if (channelsFirst) shape[2] else shape[1]
 
         input = ByteBuffer.allocateDirect(inputSize * inputSize * RGB * FLOAT_BYTES).order(ByteOrder.nativeOrder())
-        val outCount = outT.shape().fold(1) { a, b -> a * b }
+        val outShape = outT.shape()
+        require(outShape.size == 3 && outShape[1] == BOX_CHANNELS + labels.size) {
+            "$modelAsset output ${outShape.contentToString()} does not match ${labels.size} classes"
+        }
+        val outCount = outShape.fold(1) { a, b -> a * b }
         outputBuffer = ByteBuffer.allocateDirect(outCount * FLOAT_BYTES).order(ByteOrder.nativeOrder())
         output = FloatArray(outCount)
         square = createBitmap(inputSize, inputSize)
@@ -173,6 +183,7 @@ class YoloDetector(context: Context, preferGpu: Boolean, modelAsset: String = MO
         /** CLAUDE.md §6.4: CPU fallback with 4 threads. */
         private const val CPU_THREADS = 4
         private const val RGB = 3
+        private const val BOX_CHANNELS = 4
         private const val FLOAT_BYTES = 4
         private const val MAX_CHANNEL = 255f
 

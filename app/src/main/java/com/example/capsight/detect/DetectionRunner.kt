@@ -19,6 +19,8 @@ import java.util.concurrent.Executors
 data class DetectionState(
     val running: Boolean = false,
     val backend: String = "",
+    /** Hazard model (doors, stairs, poles, signs, potholes): its backend, or why it is absent. */
+    val hazards: String = "",
     val error: String? = null,
     /** Frame the detections belong to; boxes are in its pixel space. */
     val frameSeq: Long = 0,
@@ -59,12 +61,17 @@ class DetectionRunner(private val context: Context) {
                     _state.value = DetectionState(error = "Model failed to load: ${e.message}")
                     return@withContext
                 }
-                _state.value = DetectionState(running = true, backend = detector.backend)
+                val hazards = loadHazards(useGpu)
+                val hazardsText = hazards?.backend ?: hazardsMissing
+                _state.value = DetectionState(running = true, backend = detector.backend, hazards = hazardsText)
                 val fps = FpsMeter()
                 try {
-                    frames.filterNotNull().collect { frame -> detectOne(detector, frame, minScore, classes, fps) }
+                    frames.filterNotNull().collect { frame ->
+                        detectOne(detector, hazards, hazardsText, frame, minScore, classes, fps)
+                    }
                 } finally {
                     detector.close()
+                    hazards?.close()
                 }
             }
         } finally {
@@ -73,15 +80,55 @@ class DetectionRunner(private val context: Context) {
         }
     }
 
-    private fun detectOne(detector: YoloDetector, frame: Frame, minScore: Float, classes: Set<Int>?, fps: FpsMeter) {
+    private var hazardsMissing = ""
+
+    /** The optional hazard detector; the app works without it (CLAUDE.md §7, ml/hazards/). */
+    private fun loadHazards(useGpu: Boolean): YoloDetector? {
+        val present = try {
+            context.assets.list("")?.contains(HazardLabels.MODEL_ASSET) == true
+        } catch (e: java.io.IOException) {
+            false
+        }
+        if (!present) {
+            hazardsMissing = "not installed"
+            return null
+        }
+        return try {
+            YoloDetector(context, useGpu, HazardLabels.MODEL_ASSET, HazardLabels.NAMES, HazardLabels.ID_OFFSET)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Losing the extra model must not stop the main detector.
+            Log.e(TAG, "hazard model failed to load", e)
+            hazardsMissing = "failed: ${e.message}"
+            null
+        }
+    }
+
+    private fun detectOne(
+        detector: YoloDetector,
+        hazards: YoloDetector?,
+        hazardsText: String,
+        frame: Frame,
+        minScore: Float,
+        classes: Set<Int>?,
+        fps: FpsMeter,
+    ) {
         val t0 = SystemClock.elapsedRealtime()
         try {
-            val out = detector.detect(frame.bitmap, minScore, classes)
+            val main = detector.detect(frame.bitmap, minScore, classes)
+            val extra = hazards?.detect(frame.bitmap, minScore, null)
+            val out = if (extra == null) {
+                main
+            } else {
+                main.copy(detections = main.detections + extra.detections, inferenceMs = main.inferenceMs + extra.inferenceMs)
+            }
             val now = SystemClock.elapsedRealtime()
             fps.onFrame(now)
             _state.value = DetectionState(
                 running = true,
                 backend = detector.backend,
+                hazards = hazardsText,
                 frameSeq = frame.seq,
                 frameWidth = frame.width,
                 frameHeight = frame.height,

@@ -26,31 +26,41 @@ data class GuidanceConfig(
  */
 class Guidance(private val cfg: GuidanceConfig) {
     private var lastObstacles: List<RelativeObstacle> = emptyList()
+    private var lastStairs: List<RelativeObstacle> = emptyList()
     private var holdLeft = 0
     private val sides = SideChooser(cfg.hysteresis)
 
     /** Obstacles after the hold, for display. */
     var heldObstacles: List<RelativeObstacle> = emptyList()
         private set
+    var heldStairs: List<RelativeObstacle> = emptyList()
+        private set
 
     fun tick(
         fresh: List<RelativeObstacle>,
         nowMs: Long,
+        freshStairs: List<RelativeObstacle> = emptyList(),
         cameraLost: Boolean = false,
         systemFault: Boolean = false,
         perceptionReady: Boolean = true,
     ): Decision {
+        // Obstacles and stairs are held together: losing stairs for one frame must not mean clear.
         var obstacles = fresh
-        if (fresh.isNotEmpty()) {
+        var stairs = freshStairs
+        if (fresh.isNotEmpty() || freshStairs.isNotEmpty()) {
             lastObstacles = fresh
+            lastStairs = freshStairs
             holdLeft = cfg.holdTicks
         } else if (holdLeft > 0) {
             holdLeft--
             obstacles = lastObstacles
+            stairs = lastStairs
         } else {
             lastObstacles = emptyList()
+            lastStairs = emptyList()
         }
         heldObstacles = obstacles
+        heldStairs = stairs
 
         val d = cfg.decision
         val zones = ZoneAnalyzer.analyze(obstacles, ZoneParams(d.corridorHalfWidthM, d.warnDistanceM))
@@ -59,6 +69,7 @@ class Guidance(private val cfg: GuidanceConfig) {
         return Policy.decide(
             GuidanceInput(
                 obstacles = obstacles,
+                stairs = stairs,
                 cameraLost = cameraLost,
                 systemFault = systemFault,
                 perceptionReady = perceptionReady,

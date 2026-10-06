@@ -2,6 +2,7 @@ package com.example.capsight.perception
 
 import com.example.capsight.detect.CocoLabels
 import com.example.capsight.detect.Detection
+import com.example.capsight.detect.HazardLabels
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -61,9 +62,15 @@ class EgocentricTest {
     fun `size priors are plausible and complete`() {
         // Lower bound: a keyboard is genuinely ~3 cm. Upper bound catches a mis-typed prior: nothing
         // indoors is taller than a person; outdoors a bus or truck is ~3 m.
+        // Hazard poles (lamp posts) are ~5 m.
         val outdoor = setOf("car", "motorcycle", "bus", "truck", "dog")
-        SizePriors.HEIGHTS_M.forEach { (k, v) -> assertTrue("$k $v", v > 0.02 && v < if (k in outdoor) 4.0 else 2.5) }
-        SizePriors.WIDTHS_M.forEach { (k, v) -> assertTrue("$k $v", v > 0.02 && v < if (k in outdoor) 4.0 else 2.5) }
+        fun max(k: String) = when (k) {
+            in HazardLabels.NAMES -> 6.0
+            in outdoor -> 4.0
+            else -> 2.5
+        }
+        SizePriors.HEIGHTS_M.forEach { (k, v) -> assertTrue("$k $v", v > 0.02 && v < max(k)) }
+        SizePriors.WIDTHS_M.forEach { (k, v) -> assertTrue("$k $v", v > 0.02 && v < max(k)) }
         assertEquals(SizePriors.HEIGHTS_M.keys, SizePriors.WIDTHS_M.keys)
         assertTrue(SizePriors.HEIGHTS_M.keys.containsAll(SizePriors.UNRELIABLE_SMALL))
     }
@@ -80,7 +87,7 @@ class EgocentricTest {
 
     @Test
     fun `every navigation class has a size prior`() {
-        val names = CocoLabels.NAVIGATION.map { CocoLabels.name(it) }.toSet()
+        val names = CocoLabels.NAVIGATION.map { CocoLabels.name(it) }.toSet() + HazardLabels.NAMES
         assertEquals(names, SizePriors.HEIGHTS_M.keys)
     }
 
