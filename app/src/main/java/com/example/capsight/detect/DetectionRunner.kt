@@ -30,6 +30,8 @@ data class DetectionState(
     val inferenceMs: Long = 0,
     val totalMs: Long = 0,
     val fps: Float = 0f,
+    /** SystemClock.elapsedRealtime() of the last result; 0 = none yet. Lets the loop spot a stalled detector. */
+    val updatedAtMs: Long = 0,
 )
 
 /**
@@ -88,6 +90,7 @@ class DetectionRunner(private val context: Context) {
                 inferenceMs = out.inferenceMs,
                 totalMs = now - t0,
                 fps = fps.fps(now),
+                updatedAtMs = now,
             )
         } catch (e: Exception) {
             // One bad frame must not stop detection; the guidance loop (step 6) fails safe.

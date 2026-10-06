@@ -69,6 +69,7 @@ import com.example.capsight.detect.DetectionState
 import com.example.capsight.perception.Threat
 import com.example.capsight.settings.SpeechSettings
 import com.example.capsight.voice.SpeakerState
+import com.example.capsight.service.GuidanceState
 import androidx.compose.material3.Slider
 import androidx.compose.ui.semantics.contentDescription
 import kotlin.math.roundToInt
@@ -94,6 +95,7 @@ fun DebugScreen(modifier: Modifier = Modifier, vm: DebugViewModel = viewModel())
     val detectionSettings by vm.detectionSettings.collectAsStateWithLifecycle()
     val speech by vm.speech.collectAsStateWithLifecycle()
     val speechSettings by vm.speechSettings.collectAsStateWithLifecycle()
+    val guidance by vm.guidance.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     LifecycleStartEffect(vm) {
@@ -147,6 +149,7 @@ fun DebugScreen(modifier: Modifier = Modifier, vm: DebugViewModel = viewModel())
                 color = Red,
             )
         }
+        DecisionBlock(guidance)
         CaptionBlock(speech)
         StatsBlock(status)
         DetectionBlock(detection, perceived)
@@ -312,6 +315,18 @@ private fun DetectionBlock(d: DetectionState, p: PerceivedView) {
     )
 }
 
+/** The guidance loop's current decision (FR-NAV-01/02). */
+@Composable
+private fun DecisionBlock(g: GuidanceState) {
+    val d = g.decision ?: return
+    val text = if (d.speak) "P${d.priority}  ${d.message}" else "(silent)"
+    Text(text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+    Text(
+        String.format(Locale.US, "%s  ·  %.1f Hz", d.reason, g.tickHz),
+        style = MaterialTheme.typography.bodySmall,
+    )
+}
+
 /** Captions: what is being said, so a sighted helper can follow without sound (§8). */
 @Composable
 private fun CaptionBlock(sp: SpeakerState) {
@@ -367,10 +382,10 @@ private fun SpeechSection(sp: SpeakerState, settings: SpeechSettings, vm: DebugV
         modifier = Modifier.semantics { contentDescription = "Speech rate" },
     )
     SwitchRow(
-        "Announce camera link",
-        "Says \"Camera disconnected. Please stop.\" every 2 s while the camera is lost, and \"Camera connected.\" when it returns.",
-        settings.announceCameraLink,
-        vm::setAnnounceCameraLink,
+        "Speak guidance",
+        "Speaks the 10 Hz decisions (\"Path clear.\", \"Chair ahead. Move left.\", \"Camera disconnected. Please stop.\"). Off: decide and show only.",
+        settings.speakGuidance,
+        vm::setSpeakGuidance,
     )
 }
 

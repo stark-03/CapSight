@@ -23,11 +23,14 @@ import com.example.capsight.settings.DetectionSettings
 import com.example.capsight.settings.SourceKind
 import com.example.capsight.settings.SpeechSettings
 import com.example.capsight.settings.NavigationSettings
+import com.example.capsight.nav.DecisionConfig
+import com.example.capsight.nav.GuidanceConfig
+import com.example.capsight.path.HysteresisParams
 import com.example.capsight.path.ZoneAnalyzer
+import com.example.capsight.service.GuidanceLoop
 import com.example.capsight.path.ZoneParams
 import com.example.capsight.perception.Perception
 import com.example.capsight.perception.PerceptionParams
-import com.example.capsight.camera.LinkState
 import com.example.capsight.voice.Phrases
 import com.example.capsight.voice.Priority
 import com.example.capsight.voice.Speaker
@@ -45,7 +48,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /**
- * Hosts the frame receiver, detector, perception and speaker for the debug screen (FR-APP-05, steps 1-4).
+ * Hosts the whole pipeline for the debug screen until step 7 (FR-APP-05, steps 1-6): frame
+ * receiver, detector, perception, 10 Hz guidance loop and speaker.
  *
  * TEMPORARY OWNER: from build step 7 NavigationService owns the receiver so it
  * survives the screen turning off, and this ViewModel only observes it. Until then
@@ -57,6 +61,7 @@ class DebugViewModel(app: Application) : AndroidViewModel(app) {
     private val receiver = FrameReceiver()
     private val detector = DetectionRunner(app)
     private val speaker = Speaker(app)
+    private val guidanceLoop = GuidanceLoop(speaker)
 
     val settings: StateFlow<CameraSettings?> =
         appSettings.camera.stateIn(viewModelScope, SharingStarted.Eagerly, null)
@@ -68,6 +73,7 @@ class DebugViewModel(app: Application) : AndroidViewModel(app) {
     val speechSettings: StateFlow<SpeechSettings?> =
         appSettings.speech.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val speech = speaker.state
+    val guidance = guidanceLoop.state
     val navigationSettings: StateFlow<NavigationSettings?> =
         appSettings.navigation.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
@@ -78,15 +84,8 @@ class DebugViewModel(app: Application) : AndroidViewModel(app) {
         detectionSettings.filterNotNull(),
         navigationSettings.filterNotNull(),
     ) { det, cam, ds, nav ->
-        val (fov, fovSource) = fovFor(cam.source, det.frameFovDeg, nav)
-        val params = PerceptionParams(
-            fovDeg = fov,
-            minConfidence = ds.minConfidence,
-            skipUnreliable = nav.skipUnreliable,
-            corridorHalfWidthM = nav.corridorHalfWidthM,
-            warnDistanceM = nav.warnDistanceM,
-            stopDistanceM = nav.stopDistanceM,
-        )
+        val (params, fovSource) = perceptionParams(cam, ds, nav, det.frameFovDeg)
+        val fov = params.fovDeg
         val objects = Perception.perceive(det.detections, det.frameWidth, det.frameHeight, params)
         val measured = objects.mapNotNull { it.relative }
         val zones = ZoneAnalyzer.analyze(measured, ZoneParams(nav.corridorHalfWidthM, nav.warnDistanceM))
@@ -131,24 +130,28 @@ class DebugViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             speechSettings.filterNotNull().collect { speaker.configure(it.rate, it.volume) }
         }
-        // FR-RX-03/04 spoken. Step 6's guidance loop takes this over as its P0 camera-lost rule.
+        // FR-NAV-02: the 10 Hz guidance loop - camera lost, obstacles, sides, all spoken from here.
         viewModelScope.launch {
-            var previous: LinkState? = null
-            combine(status, speechSettings.filterNotNull()) { st, sp -> st to sp }.collect { (st, sp) ->
-                if (!st.running || !sp.announceCameraLink) {
-                    previous = null
-                    return@collect
+            combine(
+                combine(_running, visible) { run, shown -> run && shown },
+                settings.filterNotNull(),
+                detectionSettings.filterNotNull(),
+                navigationSettings.filterNotNull(),
+                speechSettings.filterNotNull(),
+            ) { on, cam, ds, nav, sp -> if (on) LoopConfig(cam, ds, nav, sp) else null }
+                .distinctUntilChanged()
+                .collectLatest { c ->
+                    if (c == null) return@collectLatest
+                    guidanceLoop.run(
+                        link = status,
+                        detection = detection,
+                        paramsFor = { det -> perceptionParams(c.cam, c.ds, c.nav, det.frameFovDeg).first },
+                        config = guidanceConfig(c.nav, c.sp),
+                        cameraLostMs = c.cam.cameraLostMs,
+                        periodMs = MS_PER_S / c.nav.decisionRateHz,
+                        speak = c.sp.speakGuidance,
+                    )
                 }
-                when (st.link) {
-                    // Offered on every status update; the 2 s P0 cooldown sets the repeat rate.
-                    LinkState.DISCONNECTED -> speaker.say(Phrases.CAMERA_LOST, Priority.STOP, sp.stopCooldownMs)
-                    LinkState.CONNECTED -> if (previous == LinkState.DISCONNECTED) {
-                        speaker.say(Phrases.CAMERA_CONNECTED, Priority.INFO, sp.phraseCooldownMs)
-                    }
-                    LinkState.CONNECTING -> Unit
-                }
-                previous = st.link
-            }
         }
     }
 
@@ -182,7 +185,7 @@ class DebugViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setSpeechRate(rate: Float) = viewModelScope.launch { appSettings.setSpeechRate(rate) }
 
-    fun setAnnounceCameraLink(on: Boolean) = viewModelScope.launch { appSettings.setAnnounceCameraLink(on) }
+    fun setSpeakGuidance(on: Boolean) = viewModelScope.launch { appSettings.setSpeakGuidance(on) }
 
     override fun onCleared() {
         speaker.shutdown()
@@ -229,6 +232,45 @@ class DebugViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private data class LoopConfig(
+        val cam: CameraSettings,
+        val ds: DetectionSettings,
+        val nav: NavigationSettings,
+        val sp: SpeechSettings,
+    )
+
+    private fun perceptionParams(
+        cam: CameraSettings,
+        ds: DetectionSettings,
+        nav: NavigationSettings,
+        frameFov: Float?,
+    ): Pair<PerceptionParams, String> {
+        val (fov, fovSource) = fovFor(cam.source, frameFov, nav)
+        return PerceptionParams(
+            fovDeg = fov,
+            minConfidence = ds.minConfidence,
+            skipUnreliable = nav.skipUnreliable,
+            corridorHalfWidthM = nav.corridorHalfWidthM,
+            warnDistanceM = nav.warnDistanceM,
+            stopDistanceM = nav.stopDistanceM,
+        ) to fovSource
+    }
+
+    private fun guidanceConfig(nav: NavigationSettings, sp: SpeechSettings) = GuidanceConfig(
+        decision = DecisionConfig(
+            stopDistanceM = nav.stopDistanceM,
+            warnDistanceM = nav.warnDistanceM,
+            stairsWarnM = nav.stairsWarnM,
+            corridorHalfWidthM = nav.corridorHalfWidthM,
+            phraseCooldownMs = sp.phraseCooldownMs,
+            stopCooldownMs = sp.stopCooldownMs,
+            stairsCooldownMs = sp.stairsCooldownMs,
+            clearRepeatMs = sp.clearRepeatMs,
+        ),
+        holdTicks = nav.holdTicks,
+        hysteresis = HysteresisParams(nav.sideHoldMs, nav.sideSwitchMarginM),
+    )
+
     /** Which horizontal FOV turns pixels into metres for this source (CLAUDE.md §8, §8.1). */
     private fun fovFor(source: SourceKind, frameFov: Float?, nav: NavigationSettings): Pair<Double, String> =
         when (source) {
@@ -240,6 +282,7 @@ class DebugViewModel(app: Application) : AndroidViewModel(app) {
 
     private companion object {
         const val STOP_TIMEOUT_MS = 5_000L
+        const val MS_PER_S = 1_000L
         const val INTERRUPT_SAMPLE =
             "This is a long test sentence that keeps going so that you can hear it being cut off."
         const val INTERRUPT_AFTER_MS = 1_200L

@@ -57,10 +57,12 @@ data class SpeechSettings(
     val phraseCooldownMs: Long = 3_000L,
     /** P0 ("Stop. ...") repeats sooner. */
     val stopCooldownMs: Long = 2_000L,
+    /** "Caution. Stairs ahead." repeat (guidance.py used 4 s). */
+    val stairsCooldownMs: Long = 4_000L,
     /** "Path clear." at most this often. */
     val clearRepeatMs: Long = 6_000L,
-    /** Debug: announce camera link changes (moves into the guidance loop in step 6). */
-    val announceCameraLink: Boolean = true,
+    /** Speak the guidance loop's decisions (off = decide and show only). */
+    val speakGuidance: Boolean = true,
 )
 
 /** Navigation thresholds (FR-NAV-03, FR-DIST-05). Defaults from CLAUDE.md §8. */
@@ -82,6 +84,8 @@ data class NavigationSettings(
     val capFovDeg: Double = 54.0,
     /** Used for recorded videos, and for the phone camera if it cannot report its own FOV. */
     val phoneFovDeg: Double = 65.0,
+    /** FR-NAV-02: fixed decision rate, independent of detection speed. */
+    val decisionRateHz: Int = 10,
     /** Camera height is about this minus 10 cm (ground-plane distance, later). */
     val userHeightCm: Int = 165,
 )
@@ -119,8 +123,9 @@ class AppSettings(context: Context) {
             volume = p[SPEECH_VOLUME] ?: defaults.volume,
             phraseCooldownMs = p[PHRASE_COOLDOWN_MS] ?: defaults.phraseCooldownMs,
             stopCooldownMs = p[STOP_COOLDOWN_MS] ?: defaults.stopCooldownMs,
+            stairsCooldownMs = p[STAIRS_COOLDOWN_MS] ?: defaults.stairsCooldownMs,
             clearRepeatMs = p[CLEAR_REPEAT_MS] ?: defaults.clearRepeatMs,
-            announceCameraLink = p[ANNOUNCE_LINK] ?: defaults.announceCameraLink,
+            speakGuidance = p[SPEAK_GUIDANCE] ?: defaults.speakGuidance,
         )
     }
 
@@ -143,7 +148,7 @@ class AppSettings(context: Context) {
 
     suspend fun setSpeechRate(rate: Float) = store.edit { it[SPEECH_RATE] = rate }
 
-    suspend fun setAnnounceCameraLink(on: Boolean) = store.edit { it[ANNOUNCE_LINK] = on }
+    suspend fun setSpeakGuidance(on: Boolean) = store.edit { it[SPEAK_GUIDANCE] = on }
 
     suspend fun setUseGpu(use: Boolean) = store.edit { it[USE_GPU] = use }
 
@@ -182,6 +187,7 @@ class AppSettings(context: Context) {
         val PHRASE_COOLDOWN_MS = longPreferencesKey("speech_phrase_cooldown_ms")
         val STOP_COOLDOWN_MS = longPreferencesKey("speech_stop_cooldown_ms")
         val CLEAR_REPEAT_MS = longPreferencesKey("speech_clear_repeat_ms")
-        val ANNOUNCE_LINK = booleanPreferencesKey("speech_announce_camera_link")
+        val STAIRS_COOLDOWN_MS = longPreferencesKey("speech_stairs_cooldown_ms")
+        val SPEAK_GUIDANCE = booleanPreferencesKey("speech_speak_guidance")
     }
 }
