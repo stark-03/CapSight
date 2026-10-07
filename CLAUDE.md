@@ -19,7 +19,7 @@ Read this whole file before changing code. When a request conflicts with it, ask
 | App technology | **Native Kotlin + Jetpack Compose**. Not React Native, not Flutter. | Frame decoding, inference and the 10 Hz safety loop must run natively and keep running with the screen off. The user ruled out anything that risks smoothness. |
 | Where AI runs | **On the phone.** No cloud, no laptop, no internet. | SRS constraint; works offline anywhere. |
 | Minimum Android | **Android 7.0 Nougat, API 24** (`minSdk = 24`). | User decision for ~99% device reach. **Supersedes the SRS, which says API 29.** See §6 for what this costs. |
-| Camera hardware | **AI-Thinker ESP32-CAM** (OV3660 or OV2640) the team already owns. | Firmware already exists and works (§4). XIAO ESP32S3 Sense is the fallback board only. |
+| Camera hardware | **AI-Thinker-style ESP32-CAM (ESP-32S module) with an OV3660 sensor**, confirmed from the user's photos (2 Oct 2026): pin headers already soldered, PSRAM chip present (so firmware runs 640×480), camera ribbon not yet attached. No MB programmer yet. | Firmware already exists and works (§4); its OV3660 vflip fix applies. XIAO ESP32S3 Sense is the fallback board only. |
 | BLE / ceiling camera | **Removed.** | The old Phase-2 design. Kept only as reference code (§9). |
 | Distance method | Apparent object size (ported from `egocentric.py`), later fused with ground-plane geometry once the IMU exists. | Works with no calibration rig; proven in Phase 2. |
 | Names | **Keep as generated.** Package/applicationId `com.example.capsight`, project name "Cap Sight", hotspot `BLENAV_CAM`. Do not rename. | The app will not be published on the Play Store, so `com.example` is acceptable. User decision. |
@@ -73,6 +73,8 @@ CapSight/
   CLAUDE.md                  this file
   app/                       the Android app (only thing that ships)
   firmware/esp32_cam_ap/     ESP32-CAM firmware — SOURCE OF TRUTH for the device
+  firmware/wokwi_imu_sim/    MPU6050 tilt test for the Wokwi simulator (ESP32 DevKit, SDA=IO15,
+                             SCL=IO14); prints the planned /imu JSON. Merge into esp32_cam_ap in Phase B.
   ml/yolov8n.pt              YOLOv8n weights, input to the TFLite export (§7.1)
   tools/fake_esp32cam.py     laptop stand-in for the camera during Phase A (§1A) — to be written in step 1
   reference/                 Phase-2 Python code to PORT. Read-only. Never ship, never edit.
@@ -190,7 +192,16 @@ in the same commit and update the table in §4.4.
   timeouts of ~2 s and retry every 500 ms; expect up to ~5 s before the stream returns.
 - **Brownout detector is disabled** in firmware; a weak supply shows up as the stream
   dropping and the board rebooting. The app reports this as "Camera disconnected".
-- **No control or sensor endpoints exist yet.** No `/status`, no `/imu`, no resolution control.
+- **Camera settings endpoint (added 6 Oct 2026):** `GET http://192.168.4.1/control` returns
+  `{"ok":true,"error":"ESP_OK","xclk_mhz":20,"fb":2,"grab":"latest","size":"vga","q":12}`;
+  `GET /control?xclk=10&fb=1&grab=empty&size=qvga&q=12` restarts the camera with those
+  settings (any subset of keys). Active stream clients are disconnected during the restart and
+  `/stream` answers 503 meanwhile. Settings reset to the firmware defaults on reboot.
+  Used by `tools/camera_tuning.sh`. No `/status` or `/imu` yet.
+- **Known issue (6 Oct 2026):** with the camera running at the original settings (20 MHz clock,
+  2 buffers, GRAB_LATEST, VGA) the whole Wi-Fi link collapses: landing page 3.3 s, stream
+  0.1–0.2 fps. With the camera off (`firmware/wifi_speed_test`) the same board does 64 fps and
+  16 ms page loads. Being tuned; update the firmware defaults and this note with the result.
 
 ### 4.4 Contract versions
 | Contract | Firmware | App | Endpoints |

@@ -1,0 +1,790 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0">
+<title>CapSight Build in 3D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<style>
+/* Layout: workbench. 3D stage on the left (top on phones), step list and instructions on the right. Copper accent = solder; green/amber chips = "do now" vs "Phase B". */
+:root {
+  --bg: #eef1ef; --panel: #ffffff; --fg: #17201d; --muted: #5b6762; --rule: #d5ddd9;
+  --accent: #b4642d; --accent-ink: #ffffff; --stage: #dfe5e2;
+  --now: #2f7d55; --now-bg: #e0f0e6; --later: #8a5a12; --later-bg: #f6ead2;
+  --label-bg: rgba(255,255,255,.93); --label-fg: #17201d; --label-rule: #c8d2cd;
+  --display: "IBM Plex Sans Condensed", "Arial Narrow", Arial, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", Roboto, Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1412; --panel: #161d1a; --fg: #e3ebe7; --muted: #9aa8a1; --rule: #26302c;
+    --accent: #d9884e; --accent-ink: #1a0f06; --stage: #1a221f;
+    --now: #6cc794; --now-bg: #173326; --later: #e0b161; --later-bg: #33280f;
+    --label-bg: rgba(18,24,22,.92); --label-fg: #e3ebe7; --label-rule: #34403b;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1412; --panel: #161d1a; --fg: #e3ebe7; --muted: #9aa8a1; --rule: #26302c;
+  --accent: #d9884e; --accent-ink: #1a0f06; --stage: #1a221f;
+  --now: #6cc794; --now-bg: #173326; --later: #e0b161; --later-bg: #33280f;
+  --label-bg: rgba(18,24,22,.92); --label-fg: #e3ebe7; --label-rule: #34403b;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 15.5px; line-height: 1.55; padding-inline: 16px; padding-block: 20px 40px; }
+.wrap { max-width: 1240px; margin: 0 auto; display: grid; gap: 16px; }
+header h1 { font-family: var(--display); font-weight: 700; font-size: clamp(26px, 4vw, 36px); line-height: 1.1; margin: 0 0 6px; text-wrap: balance; }
+header p { margin: 0; color: var(--muted); max-width: 70ch; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); margin: 0 0 6px; }
+
+.layout { display: grid; grid-template-columns: 1fr; gap: 16px; }
+@media (min-width: 980px) { .layout { grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); align-items: start; } }
+
+.stage { background: var(--stage); border: 1px solid var(--rule); border-radius: 12px; overflow: hidden; min-width: 0; }
+.viewport { position: relative; width: 100%; aspect-ratio: 16 / 11; max-height: 72vh; touch-action: none; }
+.viewport canvas { display: block; width: 100%; height: 100%; }
+.labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.tag { position: absolute; transform: translate(-50%, -100%); white-space: nowrap; font-family: var(--mono); font-size: 12px; line-height: 1.2;
+  background: var(--label-bg); color: var(--label-fg); border: 1px solid var(--label-rule); border-radius: 6px; padding: 3px 7px; margin-top: -8px; transition: opacity .25s; }
+.tag::after { content: ""; position: absolute; left: 50%; bottom: -7px; width: 1px; height: 7px; background: var(--label-rule); }
+.tag.hot { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.hint { position: absolute; right: 10px; top: 10px; font-family: var(--mono); font-size: 11.5px; color: var(--muted); background: var(--label-bg); border-radius: 6px; padding: 3px 8px; pointer-events: none; }
+.noGL { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--muted); }
+
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 12px; border-top: 1px solid var(--rule); background: var(--panel); }
+button { font: inherit; font-size: 14px; border-radius: 8px; border: 1px solid var(--rule); background: var(--panel); color: var(--fg); padding: 7px 12px; cursor: pointer; min-height: 38px; }
+button:hover { border-color: var(--accent); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+button:disabled { opacity: .45; cursor: default; }
+#scrub { flex: 1 1 160px; min-width: 120px; accent-color: var(--accent); }
+.count { font-family: var(--mono); font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.panel { background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; padding: 16px; display: grid; gap: 14px; min-width: 0; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.steps button { width: 100%; text-align: left; display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 10px; padding: 8px 10px; }
+.steps .n { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-family: var(--mono); font-weight: 600; font-size: 13px; background: var(--bg); border: 1px solid var(--rule); }
+.steps button[aria-current="step"] { border-color: var(--accent); background: var(--bg); }
+.steps button[aria-current="step"] .n { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.chip { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.chip.now { background: var(--now-bg); color: var(--now); }
+.chip.later { background: var(--later-bg); color: var(--later); }
+
+.detail h2 { font-family: var(--display); font-size: 22px; line-height: 1.2; margin: 6px 0 8px; text-wrap: balance; }
+.detail ol { margin: 0 0 10px; padding-left: 20px; display: grid; gap: 4px; }
+.detail .check { border-left: 3px solid var(--now); padding: 6px 10px; background: var(--bg); border-radius: 0 8px 8px 0; font-size: 14.5px; }
+.detail .need { font-size: 14px; color: var(--later); margin: 0 0 8px; }
+code { font-family: var(--mono); font-size: .9em; background: var(--bg); padding: 1px 5px; border-radius: 4px; }
+.foot { font-size: 13px; color: var(--muted); margin: 0; }
+@media (prefers-reduced-motion: reduce) { .tag { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">CapSight · cap camera build</p>
+    <h1>ESP32-CAM build, step by step in 3D</h1>
+    <p>Each step plays as an animation. Drag to rotate, pinch or scroll to zoom, and use the slider to scrub through a step. Steps 1–4 use the parts you have now; steps 5–6 preview Phase B.</p>
+  </header>
+
+  <div class="layout">
+    <section class="stage" aria-label="3D view">
+      <div class="viewport" id="viewport">
+        <div class="labels" id="labels"></div>
+        <div class="hint">drag to rotate · scroll to zoom</div>
+      </div>
+      <div class="controls">
+        <button id="prev" type="button" aria-label="Previous step">◀ Prev</button>
+        <button id="play" type="button" class="primary">Replay</button>
+        <input id="scrub" type="range" min="0" max="1000" value="0" aria-label="Animation position">
+        <span class="count" id="count">1 / 6</span>
+        <button id="next" type="button" aria-label="Next step">Next ▶</button>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <ol class="steps" id="steps"></ol>
+      <div class="detail" id="detail" aria-live="polite"></div>
+      <p class="foot">Models are simplified and not exactly to scale. Always match the pin names printed on your own boards.</p>
+    </aside>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(function () {
+'use strict';
+
+/* ------------------------------------------------------------------ steps */
+const STEPS = [
+  { title: 'Attach the OV3660 camera', phase: 'now', dur: 9,
+    items: [
+      'Flip up the black latch on the ribbon connector.',
+      'Slide the ribbon in fully, gold contacts facing the board (lens facing down at this point).',
+      'Press the latch back down.',
+      'Fold the camera over onto the SD-card slot so the lens faces up.'],
+    check: 'Ribbon straight and fully in; latch lying flat; a gentle tug does not pull it out.' },
+  { title: 'Seat it on the MB and flash', phase: 'now', dur: 9,
+    items: [
+      'Press the ESP32-CAM onto the MB so the 5V and GND labels on both boards line up.',
+      'Connect the MB to the laptop with a micro-USB <b>data</b> cable.',
+      'Arduino IDE: board <code>AI Thinker ESP32-CAM</code>, partition <code>Huge APP</code>, 115200 → upload <code>esp32_cam_ap.ino</code>.',
+      '“Failed to connect”: hold <b>IO0</b>, tap <b>RST</b>, release IO0, upload again. After “Done uploading”, tap RST once.'],
+    check: 'Serial Monitor at 115200 prints “BLENAV_CAM ready”.' },
+  { title: 'Watch the video on your phone', phase: 'now', dur: 7,
+    items: [
+      'Keep the board on the MB, powered by USB.',
+      'On the phone join Wi-Fi <code>BLENAV_CAM</code>, password <code>blenav1234</code>. Tap “Stay connected” if asked.',
+      'Open <code>http://192.168.4.1</code> in Chrome.'],
+    check: 'Live video; waving a hand shows up in well under a second.' },
+  { title: 'Solder the MPU6050 header', phase: 'now', dur: 10,
+    items: [
+      'Push the short pins of one 8-pin strip up through the MPU6050 from underneath.',
+      'Solder each pin on the top side: hold the iron on pin and pad for 1–2 s, then feed solder.',
+      'Each joint should be a small shiny cone, with no solder bridging two pins.'],
+    check: 'All 8 joints separate and shiny. Borrow the lab’s iron; this is the only soldering for now.' },
+  { title: 'Wire power, capacitor and MPU6050', phase: 'later', dur: 11,
+    need: 'Phase B · needs the USB-to-DuPont power cable and a power bank.',
+    items: [
+      'Take the ESP32-CAM off the MB.',
+      'Capacitor across 5V and GND: long leg (+) to 5V, striped side (−) to GND.',
+      'Power cable: red → 5V, black → GND. Measure about 5.0 V before connecting the board.',
+      'Jumpers: 3V3 → VCC, GND → GND, IO14 → SCL, IO15 → SDA.'],
+    check: 'Video still streams from the power bank for 30 minutes without dropping.' },
+  { title: 'Box and cap', phase: 'later', dur: 10,
+    need: 'Phase B · needs the box, cap, Velcro, foam tape and cable clips.',
+    items: [
+      'Board upright behind the lens hole; MPU6050 flat on the box floor with its X arrow pointing forward.',
+      'Velcro the box on the cap’s front panel, just above the peak.',
+      'Foam wedge behind it so the camera points 25–30° down.',
+      'Cable over the cap, down the collar, into the back pocket.'],
+    check: 'With the head level the camera sees the floor from about 1.4 m ahead.' },
+];
+
+/* --------------------------------------------------------- page elements */
+const vp = document.getElementById('viewport');
+const labelLayer = document.getElementById('labels');
+const stepsEl = document.getElementById('steps');
+const detailEl = document.getElementById('detail');
+const scrub = document.getElementById('scrub');
+const playBtn = document.getElementById('play');
+const prevBtn = document.getElementById('prev');
+const nextBtn = document.getElementById('next');
+const countEl = document.getElementById('count');
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+STEPS.forEach((s, i) => {
+  const li = document.createElement('li');
+  li.innerHTML = `<button type="button" id="stepbtn${i}"><span class="n">${i + 1}</span><span>${s.title}</span>` +
+    `<span class="chip ${s.phase === 'now' ? 'now' : 'later'}">${s.phase === 'now' ? 'Do now' : 'Phase B'}</span></button>`;
+  li.querySelector('button').addEventListener('click', () => goTo(i));
+  stepsEl.appendChild(li);
+});
+
+if (typeof THREE === 'undefined' || !window.WebGLRenderingContext) {
+  vp.insertAdjacentHTML('beforeend', '<div class="noGL">The 3D view could not start in this browser (WebGL unavailable). The written steps on the right still apply.</div>');
+}
+
+/* ------------------------------------------------------------ three.js */
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+vp.insertBefore(renderer.domElement, labelLayer);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(38, 16 / 11, 0.1, 200);
+camera.position.set(4, 6, -8);
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 3;
+controls.maxDistance = 40;
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x445048, 0.75));
+const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+sun.position.set(5, 10, -6);
+scene.add(sun);
+const fill = new THREE.DirectionalLight(0xffffff, 0.35);
+fill.position.set(-6, 4, 8);
+scene.add(fill);
+
+function readToken(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function applyStageColor() { scene.background = new THREE.Color(readToken('--stage') || '#dfe5e2'); }
+applyStageColor();
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyStageColor);
+new MutationObserver(applyStageColor).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+// desk mat, like the one in the parts photo
+const mat = new THREE.Mesh(new THREE.CircleGeometry(14, 48), new THREE.MeshStandardMaterial({ color: 0x2a2f2d, roughness: 0.95 }));
+mat.rotation.x = -Math.PI / 2;
+mat.position.y = -2.6;
+scene.add(mat);
+
+/* ------------------------------------------------------------ helpers */
+const MAT = {
+  pcb: new THREE.MeshStandardMaterial({ color: 0x0b0c0d, roughness: 0.5 }),
+  pcbBlue: new THREE.MeshStandardMaterial({ color: 0x2150a8, roughness: 0.5 }),
+  gold: new THREE.MeshStandardMaterial({ color: 0xd8ab4c, metalness: 0.85, roughness: 0.3 }),
+  metal: new THREE.MeshStandardMaterial({ color: 0xc9ced3, metalness: 0.75, roughness: 0.35 }),
+  black: new THREE.MeshStandardMaterial({ color: 0x0e0f10, roughness: 0.6 }),
+  latch: new THREE.MeshStandardMaterial({ color: 0x3b2c1c, roughness: 0.6 }),
+  ribbon: new THREE.MeshStandardMaterial({ color: 0xd8902c, roughness: 0.5, side: THREE.DoubleSide }),
+  white: new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x333333, roughness: 0.4 }),
+  glass: new THREE.MeshStandardMaterial({ color: 0xb0164e, emissive: 0x3a0518, metalness: 0.3, roughness: 0.15 }),
+  solder: new THREE.MeshStandardMaterial({ color: 0xd9dde0, metalness: 0.9, roughness: 0.2, emissive: 0x000000 }),
+  red: new THREE.MeshStandardMaterial({ color: 0xd23b3b, roughness: 0.5 }),
+  wireBlack: new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.5 }),
+  yellow: new THREE.MeshStandardMaterial({ color: 0xe9b417, roughness: 0.5 }),
+  green: new THREE.MeshStandardMaterial({ color: 0x2c9b57, roughness: 0.5 }),
+  capBlue: new THREE.MeshStandardMaterial({ color: 0x1d3f7a, roughness: 0.4 }),
+  grey: new THREE.MeshStandardMaterial({ color: 0x9aa3a8, roughness: 0.5 }),
+  navy: new THREE.MeshStandardMaterial({ color: 0x1d4f7a, roughness: 0.8 }),
+  navyDark: new THREE.MeshStandardMaterial({ color: 0x163e60, roughness: 0.8 }),
+  skin: new THREE.MeshStandardMaterial({ color: 0xc69a78, roughness: 0.8 }),
+  plastic: new THREE.MeshStandardMaterial({ color: 0xe8ecee, roughness: 0.55 }),
+  cone: new THREE.MeshBasicMaterial({ color: 0xf2c230, transparent: true, opacity: 0.18, depthWrite: false, side: THREE.DoubleSide }),
+  ironHandle: new THREE.MeshStandardMaterial({ color: 0x2b6cb0, roughness: 0.6 }),
+};
+const box = (w, h, d, m) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
+const cyl = (r, h, m, seg = 24) => new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, seg), m);
+const clamp01 = (x) => Math.max(0, Math.min(1, x));
+const seg = (t, a, b) => clamp01((t - a) / (b - a));                 // 0..1 within [a,b]
+const ease = (x) => x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+const lerp = (a, b, f) => a + (b - a) * f;
+const V = (x, y, z) => new THREE.Vector3(x, y, z);
+
+/* ------------------------------------------------- ESP32-CAM model
+   Long axis = z. Antenna / SD-slot end = +z. Connector + flash LED end = -z.
+   Top side (+y): SD slot, ribbon connector, LED. Underside: ESP-32S shield, pins. */
+const PIN = 0.254, ROWX = 1.143;
+const LEFT = ['5V', 'GND', 'IO12', 'IO13', 'IO15', 'IO14', 'IO2', 'IO4'];
+const RIGHT = ['3V3', 'IO16', 'IO0', 'GND', 'VCC', 'U0R', 'U0T', 'GND'];
+function pinZ(i) { return 1.25 - i * PIN; }
+// "left" column as printed on the board when the SD-slot side faces you, antenna end at the top
+function pinLocal(side, i, tip = true) { return V(side === 'L' ? ROWX : -ROWX, tip ? -0.86 : 0.08, pinZ(i)); }
+
+function makeEsp32Cam() {
+  const g = new THREE.Group();
+  g.add(box(2.7, 0.16, 4.0, MAT.pcb));
+  const sd = box(1.75, 0.22, 1.65, MAT.metal); sd.position.set(0.1, 0.19, 0.95); g.add(sd);
+  const conn = box(1.7, 0.14, 0.42, MAT.black); conn.position.set(0, 0.15, -0.85); g.add(conn);
+  const latchPivot = new THREE.Group(); latchPivot.position.set(0, 0.23, -0.64);
+  const latch = box(1.7, 0.05, 0.32, MAT.latch); latch.position.set(0, 0, -0.16); latchPivot.add(latch); g.add(latchPivot);
+  const led = box(0.34, 0.12, 0.34, MAT.white); led.position.set(-0.95, 0.14, -1.55); g.add(led);
+  [[0.7, -0.15], [-0.6, -0.2], [0.85, -1.5], [0.3, -1.55], [-0.5, -1.45]].forEach(([x, z]) => {
+    const c = box(0.22, 0.08, 0.14, MAT.black); c.position.set(x, 0.12, z); g.add(c);
+  });
+  const shield = box(1.6, 0.3, 1.8, MAT.metal); shield.position.set(0, -0.23, 0.55); g.add(shield);
+  for (let i = 0; i < 5; i++) { const a = box(0.06, 0.02, 0.3, MAT.gold); a.position.set(-0.6 + i * 0.3, -0.09, 1.75); g.add(a); }
+  ['L', 'R'].forEach((side) => {
+    for (let i = 0; i < 8; i++) {
+      const x = side === 'L' ? ROWX : -ROWX;
+      const sp = box(0.24, 0.24, 0.24, MAT.black); sp.position.set(x, -0.2, pinZ(i)); g.add(sp);
+      const p = cyl(0.032, 0.62, MAT.gold, 8); p.position.set(x, -0.55, pinZ(i)); g.add(p);
+      const j = cyl(0.06, 0.06, MAT.gold, 10); j.position.set(x, 0.11, pinZ(i)); g.add(j);
+    }
+  });
+  return { group: g, latchPivot };
+}
+
+/* ------------------------------------------------- camera module + ribbon */
+function makeCameraModule() {
+  const g = new THREE.Group();
+  g.add(box(0.85, 0.32, 0.85, MAT.black));
+  const lens = cyl(0.3, 0.32, MAT.black, 28); lens.position.y = 0.32; g.add(lens);
+  const ring = cyl(0.31, 0.04, MAT.grey, 28); ring.position.y = 0.46; g.add(ring);
+  const glass = cyl(0.14, 0.04, MAT.glass, 24); glass.position.y = 0.49; g.add(glass);
+  return g;
+}
+const RIB_N = 48, RIB_W = 0.55;
+function makeRibbon() {
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array((RIB_N + 1) * 2 * 3), 3));
+  const idx = [];
+  for (let i = 0; i < RIB_N; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+  geo.setIndex(idx);
+  return new THREE.Mesh(geo, MAT.ribbon);
+}
+// Path of the ribbon in board coordinates: straight out of the connector, a U-bend, straight back over the board.
+function ribbonFrame(start, s, theta, L, R, a) {
+  if (s <= a) return { p: V(start.x, start.y, start.z - s), t: V(0, 0, -1) };
+  const arc = theta * R;
+  const c = V(start.x, start.y, start.z - a);
+  if (arc > 1e-6 && s <= a + arc) {
+    const phi = (s - a) / R;
+    return { p: V(c.x, c.y + R - R * Math.cos(phi), c.z - R * Math.sin(phi)), t: V(0, Math.sin(phi), -Math.cos(phi)) };
+  }
+  const end = arc > 1e-6 ? V(c.x, c.y + R - R * Math.cos(theta), c.z - R * Math.sin(theta)) : c;
+  const t = V(0, Math.sin(theta), -Math.cos(theta));
+  return { p: end.clone().addScaledVector(t, s - a - arc), t };
+}
+function poseCamera(ribbon, module, start, theta) {
+  const L = 2.3, R = 0.28, a = 0.15;
+  const pos = ribbon.geometry.attributes.position;
+  for (let i = 0; i <= RIB_N; i++) {
+    const { p } = ribbonFrame(start, (i / RIB_N) * L, theta, L, R, a);
+    pos.setXYZ(i * 2, p.x - RIB_W / 2, p.y, p.z);
+    pos.setXYZ(i * 2 + 1, p.x + RIB_W / 2, p.y, p.z);
+  }
+  pos.needsUpdate = true;
+  ribbon.geometry.computeVertexNormals();
+  ribbon.geometry.computeBoundingSphere();
+  const { p, t } = ribbonFrame(start, L, theta, L, R, a);
+  const lensDir = V(0, -Math.cos(theta), -Math.sin(theta)).normalize();   // lens faces down until folded
+  const x = V(1, 0, 0);
+  const z = new THREE.Vector3().crossVectors(x, lensDir);
+  module.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, lensDir, z));
+  module.position.copy(p).addScaledVector(t, 0.42);
+}
+
+/* ------------------------------------------------- ESP32-CAM-MB (HW-381) */
+function makeMB() {
+  const g = new THREE.Group();
+  g.add(box(3.0, 0.16, 4.6, MAT.pcb));
+  [ROWX, -ROWX].forEach((x) => { const h = box(0.27, 0.85, 2.1, MAT.black); h.position.set(x, 0.5, 0.36); g.add(h); });
+  const ch = box(0.6, 0.12, 0.42, MAT.black); ch.position.set(0, 0.14, -0.9); g.add(ch);
+  const usb = box(0.78, 0.26, 0.55, MAT.metal); usb.position.set(0, 0.21, -2.08); g.add(usb);
+  const buttons = {};
+  [['IO0', 0.95], ['RST', -0.95]].forEach(([name, x]) => {
+    const b = box(0.32, 0.12, 0.32, MAT.metal); b.position.set(x, 0.14, -1.85); g.add(b);
+    const cap = cyl(0.09, 0.08, new THREE.MeshStandardMaterial({ color: 0x333333, emissive: 0x000000 }), 16);
+    cap.position.set(x, 0.23, -1.85); g.add(cap); buttons[name] = cap;
+  });
+  const led = box(0.16, 0.08, 0.16, new THREE.MeshStandardMaterial({ color: 0x661111, emissive: 0x000000 }));
+  led.position.set(0.55, 0.12, -1.35); g.add(led);
+  return { group: g, buttons, led };
+}
+
+/* ------------------------------------------------- MPU6050 + header + iron */
+const MPU_PIN_NAMES = ['VCC', 'GND', 'SCL', 'SDA', 'XDA', 'XCL', 'AD0', 'INT'];
+function mpuPinX(i) { return -0.889 + i * PIN; }
+function makeMPU() {
+  const g = new THREE.Group();
+  g.add(box(2.1, 0.16, 1.6, MAT.pcbBlue));
+  for (let i = 0; i < 8; i++) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.025, 8, 16), MAT.gold);
+    ring.rotation.x = Math.PI / 2; ring.position.set(mpuPinX(i), 0.085, 0.6); g.add(ring);
+  }
+  const chip = box(0.42, 0.1, 0.42, MAT.black); chip.position.set(0, 0.13, -0.15); g.add(chip);
+  [[-0.85, -0.55], [0.85, -0.55]].forEach(([x, z]) => { const h = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.04, 8, 16), MAT.plastic); h.rotation.x = Math.PI / 2; h.position.set(x, 0.085, z); g.add(h); });
+  return g;
+}
+function makeHeader() {
+  const g = new THREE.Group();
+  g.add(box(2.03, 0.25, 0.25, MAT.black));
+  for (let i = 0; i < 8; i++) {
+    const p = cyl(0.032, 0.95, MAT.gold, 8); p.position.set(mpuPinX(i), -0.05, 0); g.add(p);
+  }
+  return g;
+}
+function makeIron() {
+  const g = new THREE.Group();
+  const handle = cyl(0.17, 2.0, MAT.ironHandle); handle.position.y = 2.5; g.add(handle);
+  const shaft = cyl(0.05, 1.3, MAT.metal, 12); shaft.position.y = 0.85; g.add(shaft);
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.25, 12), MAT.metal); tip.rotation.x = Math.PI; tip.position.y = 0.08; g.add(tip);
+  return g;   // origin = tip point
+}
+
+/* ------------------------------------------------- phone, laptop, power bank */
+function screenTexture(draw, w = 256, h = 512) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const tex = new THREE.CanvasTexture(c); tex.encoding = THREE.sRGBEncoding;
+  return { canvas: c, ctx: c.getContext('2d'), tex, draw };
+}
+function makePhone() {
+  const g = new THREE.Group();
+  const body = box(1.5, 3.0, 0.16, MAT.black); g.add(body);
+  const st = screenTexture(drawPhone);
+  const scr = new THREE.Mesh(new THREE.PlaneGeometry(1.36, 2.82), new THREE.MeshBasicMaterial({ map: st.tex }));
+  scr.position.z = -0.085; scr.rotation.y = Math.PI; g.add(scr);
+  return { group: g, st };
+}
+function drawPhone(ctx, w, h, time) {
+  ctx.fillStyle = '#f4f6f7'; ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = '#e3e8eb'; roundRect(ctx, 14, 18, w - 28, 34, 17); ctx.fill();
+  ctx.fillStyle = '#1b2a33'; ctx.font = '600 15px monospace'; ctx.fillText('192.168.4.1', 60, 41);
+  ctx.fillStyle = '#cfd8dc'; ctx.fillRect(14, 70, w - 28, 210);
+  ctx.fillStyle = '#b7c3c9'; ctx.beginPath(); ctx.moveTo(14, 280); ctx.lineTo(w - 14, 280); ctx.lineTo(w - 70, 190); ctx.lineTo(70, 190); ctx.fill();
+  const x = 110 + Math.sin(time * 0.8) * 40;           // a chair drifting across the live view
+  ctx.strokeStyle = '#1b2a33'; ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.moveTo(x, 210); ctx.lineTo(x + 50, 210); ctx.lineTo(x + 50, 160);
+  ctx.moveTo(x + 4, 210); ctx.lineTo(x + 4, 250); ctx.moveTo(x + 46, 210); ctx.lineTo(x + 46, 250); ctx.stroke();
+  ctx.fillStyle = '#2e7d4f'; ctx.font = '700 20px sans-serif'; ctx.fillText('● Live video', 60, 325);
+  ctx.fillStyle = '#56626e'; ctx.font = '15px sans-serif'; ctx.fillText('Wi-Fi: BLENAV_CAM', 58, 355);
+}
+function roundRect(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+function makeLaptop() {
+  const g = new THREE.Group();
+  g.add(box(4.2, 0.18, 2.8, MAT.grey));
+  const st = screenTexture(drawLaptop, 512, 320);
+  const lid = new THREE.Group(); lid.position.set(0, 0.09, 1.4); lid.rotation.x = 0.28;
+  const panel = box(4.2, 2.7, 0.12, MAT.black); panel.position.y = 1.35; lid.add(panel);
+  const scr = new THREE.Mesh(new THREE.PlaneGeometry(3.9, 2.4), new THREE.MeshBasicMaterial({ map: st.tex }));
+  scr.position.set(0, 1.35, -0.065); scr.rotation.y = Math.PI; lid.add(scr);
+  g.add(lid);
+  return { group: g, st };
+}
+function drawLaptop(ctx, w, h, time, f) {
+  ctx.fillStyle = '#eef2f5'; ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = '#1d4f7a'; ctx.fillRect(0, 0, w, 34);
+  ctx.fillStyle = '#fff'; ctx.font = '600 17px sans-serif'; ctx.fillText('Arduino IDE · esp32_cam_ap.ino', 14, 23);
+  ctx.fillStyle = '#1b2a33'; ctx.font = '15px monospace';
+  ctx.fillText('Board: AI Thinker ESP32-CAM', 18, 70);
+  ctx.fillText('Partition: Huge APP (3MB No OTA)', 18, 96);
+  ctx.fillText('Upload speed: 115200', 18, 122);
+  ctx.fillStyle = '#d5dde3'; ctx.fillRect(18, 160, w - 36, 22);
+  ctx.fillStyle = '#2e7d4f'; ctx.fillRect(18, 160, (w - 36) * (f || 0), 22);
+  ctx.fillStyle = '#1b2a33'; ctx.font = '600 16px sans-serif';
+  ctx.fillText((f || 0) >= 1 ? 'Done uploading ✓  — tap RST' : 'Uploading…', 18, 215);
+}
+function makePowerBank() {
+  const g = new THREE.Group();
+  g.add(box(1.6, 0.55, 3.0, MAT.plastic));
+  for (let i = 0; i < 4; i++) { const l = cyl(0.06, 0.04, new THREE.MeshStandardMaterial({ color: i < 3 ? 0x2e9b57 : 0x999999, emissive: i < 3 ? 0x0c3a1e : 0 }), 10); l.position.set(-0.45 + i * 0.3, 0.29, -0.9); g.add(l); }
+  return g;
+}
+
+/* ------------------------------------------------- tubes (wires, cables) */
+function tube(points, radius, material) {
+  const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.1);
+  const geo = new THREE.TubeGeometry(curve, 120, radius, 10, false);
+  const m = new THREE.Mesh(geo, material);
+  m.userData.total = geo.index.count;
+  return m;
+}
+function grow(m, f) { m.geometry.setDrawRange(0, Math.floor(m.userData.total * clamp01(f) / 6) * 6); m.visible = f > 0.001; }
+
+/* ------------------------------------------------- labels */
+const labels = [];
+function label(text, getPos, opts = {}) {
+  const el = document.createElement('div');
+  el.className = 'tag' + (opts.hot ? ' hot' : '');
+  el.textContent = text;
+  el.style.opacity = '0';
+  labelLayer.appendChild(el);
+  const L = { el, getPos, from: opts.from ?? 0, step: opts.step };
+  labels.push(L);
+  return L;
+}
+function updateLabels(stepIndex, t) {
+  const w = vp.clientWidth, h = vp.clientHeight;
+  labels.forEach((L) => {
+    const on = L.step === stepIndex && t >= L.from;
+    if (!on) { L.el.style.opacity = '0'; return; }
+    const v = L.getPos().clone().project(camera);
+    if (v.z > 1) { L.el.style.opacity = '0'; return; }
+    L.el.style.left = ((v.x + 1) / 2 * w) + 'px';
+    L.el.style.top = ((1 - v.y) / 2 * h) + 'px';
+    L.el.style.opacity = '1';
+  });
+}
+const worldOf = (obj, local) => () => obj.localToWorld(local.clone());
+
+/* ================================================== build the 6 scenes */
+const scenes = [];
+
+// ---- Step 1: camera ribbon -------------------------------------------------
+(function () {
+  const root = new THREE.Group();
+  const cam = makeEsp32Cam(); root.add(cam.group);
+  const ribbon = makeRibbon(); cam.group.add(ribbon);
+  const module = makeCameraModule(); cam.group.add(module);
+  const mouth = V(0, 0.2, -1.06);
+  scenes.push({
+    root, view: { pos: V(5.5, 4.5, -6.5), target: V(0, 0.2, -0.8) },
+    update(t) {
+      const open = ease(seg(t, 0.08, 0.22)) - ease(seg(t, 0.5, 0.6));
+      cam.latchPivot.rotation.x = 1.5 * open;
+      const pull = 1 - ease(seg(t, 0.25, 0.47));
+      const start = mouth.clone(); start.z -= 0.75 * pull; start.y += 0.06 * pull;
+      poseCamera(ribbon, module, start, Math.PI * ease(seg(t, 0.62, 0.95)));
+    },
+  });
+  label('latch (flip up)', worldOf(cam.group, V(0, 0.5, -0.9)), { step: 0, from: 0.05, hot: true });
+  label('ribbon: contacts face the board', worldOf(cam.group, V(0, 0.25, -2.0)), { step: 0, from: 0.25 });
+  label('press latch down', worldOf(cam.group, V(0.9, 0.35, -0.75)), { step: 0, from: 0.5, hot: true });
+  label('lens faces up after folding', () => module.localToWorld(V(0, 0.7, 0)), { step: 0, from: 0.9 });
+  label('SD-card slot', worldOf(cam.group, V(0.1, 0.35, 1.5)), { step: 0, from: 0 });
+})();
+
+// ---- Step 2: seat on MB, flash --------------------------------------------
+(function () {
+  const root = new THREE.Group();
+  const mb = makeMB(); mb.group.position.y = -1.5; root.add(mb.group);
+  const cam = makeEsp32Cam(); root.add(cam.group);
+  const ribbon = makeRibbon(); cam.group.add(ribbon);
+  const module = makeCameraModule(); cam.group.add(module);
+  poseCamera(ribbon, module, V(0, 0.2, -1.06), Math.PI);
+  const lap = makeLaptop(); lap.group.position.set(0, -2.45, -8.2); lap.group.rotation.y = 0; root.add(lap.group);
+  const plug = box(0.7, 0.24, 0.9, MAT.black); root.add(plug);
+  const cable = tube([V(0, -1.29, -3.1), V(0, -1.6, -4.5), V(0.6, -2.4, -5.6), V(0.2, -2.3, -6.6)], 0.09, MAT.black); root.add(cable);
+  scenes.push({
+    root, laptop: lap, view: { pos: V(6.5, 4.5, -9.5), target: V(0, -1.2, -2.6) },
+    update(t, time) {
+      const down = ease(seg(t, 0.05, 0.32));
+      cam.group.position.y = lerp(2.4, 0, down);
+      const p = ease(seg(t, 0.36, 0.5));
+      plug.position.set(0, -1.29, lerp(-3.9, -2.75, p));
+      grow(cable, seg(t, 0.36, 0.5));
+      const on = t > 0.5;
+      mb.led.material.emissive.setHex(on ? 0xdd2222 : 0x000000);
+      const up = seg(t, 0.52, 0.8);
+      lap.st.draw(lap.st.ctx, lap.st.canvas.width, lap.st.canvas.height, time, up);
+      lap.st.tex.needsUpdate = true;
+      const pulse = (a, b) => (t > a && t < b) ? (0.5 + 0.5 * Math.sin(time * 9)) : 0;
+      mb.buttons.IO0.material.emissive.setRGB(pulse(0.82, 0.92) * 0.9, pulse(0.82, 0.92) * 0.45, 0);
+      mb.buttons.RST.material.emissive.setRGB(pulse(0.86, 1.01) * 0.9, pulse(0.86, 1.01) * 0.45, 0);
+    },
+  });
+  label('match 5V / GND labels', worldOf(cam.group, V(ROWX, 0.2, 1.3)), { step: 1, from: 0.05 });
+  label('ESP32-CAM-MB (HW-381)', worldOf(mb.group, V(-1.5, 0.3, 1.6)), { step: 1, from: 0 });
+  label('micro-USB data cable', () => plug.position.clone().add(V(0, 0.35, 0)), { step: 1, from: 0.4 });
+  label('IO0', worldOf(mb.group, V(0.95, 0.45, -1.85)), { step: 1, from: 0.8, hot: true });
+  label('RST', worldOf(mb.group, V(-0.95, 0.45, -1.85)), { step: 1, from: 0.8, hot: true });
+})();
+
+// ---- Step 3: phone sees the stream ----------------------------------------
+(function () {
+  const root = new THREE.Group();
+  const mb = makeMB(); mb.group.position.y = -1.5; mb.led.material.emissive.setHex(0xdd2222); root.add(mb.group);
+  const cam = makeEsp32Cam(); root.add(cam.group);
+  const ribbon = makeRibbon(); cam.group.add(ribbon);
+  const module = makeCameraModule(); cam.group.add(module);
+  poseCamera(ribbon, module, V(0, 0.2, -1.06), Math.PI);
+  const phone = makePhone(); phone.group.position.set(-6, 0.3, -1.5); phone.group.rotation.y = -0.5; root.add(phone.group);
+  const arcs = [];
+  for (let i = 0; i < 3; i++) {
+    const m = new THREE.Mesh(new THREE.TorusGeometry(0.9 + i * 0.75, 0.05, 8, 40, Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0x2f7d55, transparent: true, opacity: 0 }));
+    m.position.set(-0.4, 1.0, -0.2); m.rotation.set(0, Math.PI / 2 + 0.25, Math.PI / 4 - 0.1);
+    root.add(m); arcs.push(m);
+  }
+  scenes.push({
+    root, view: { pos: V(2.5, 3.5, -10), target: V(-2.8, 0.2, -0.8) },
+    update(t, time) {
+      arcs.forEach((a, i) => { const ph = (time * 1.2 - i * 0.33) % 1; a.material.opacity = t > 0.15 ? 0.85 * Math.max(0, Math.sin(ph * Math.PI)) : 0; });
+      const show = t > 0.45;
+      phone.st.draw = show ? drawPhone : drawPhoneBlank;
+      phone.st.draw(phone.st.ctx, phone.st.canvas.width, phone.st.canvas.height, time);
+      phone.st.tex.needsUpdate = true;
+    },
+  });
+  label('Wi-Fi: BLENAV_CAM · blenav1234', worldOf(root, V(-2.6, 2.6, -0.4)), { step: 2, from: 0.15, hot: true });
+  label('Chrome → http://192.168.4.1', worldOf(phone.group, V(0, 1.9, 0)), { step: 2, from: 0.45 });
+  label('powered by USB', worldOf(mb.group, V(0, 0.5, -2.3)), { step: 2, from: 0 });
+})();
+function drawPhoneBlank(ctx, w, h) {
+  ctx.fillStyle = '#f4f6f7'; ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = '#1b2a33'; ctx.font = '700 22px sans-serif'; ctx.fillText('Wi-Fi', 20, 50);
+  ctx.fillStyle = '#e3eaf0'; roundRect(ctx, 14, 70, w - 28, 70, 10); ctx.fill();
+  ctx.fillStyle = '#1b2a33'; ctx.font = '600 18px sans-serif'; ctx.fillText('BLENAV_CAM', 28, 100);
+  ctx.fillStyle = '#56626e'; ctx.font = '14px sans-serif'; ctx.fillText('Connecting…', 28, 124);
+}
+
+// ---- Step 4: solder MPU6050 header ----------------------------------------
+(function () {
+  const root = new THREE.Group();
+  const mpu = makeMPU(); root.add(mpu);
+  const header = makeHeader(); header.position.z = 0.6; root.add(header);
+  const iron = makeIron(); root.add(iron);
+  iron.rotation.set(0.0, 0, -0.75);
+  const blobs = [];
+  for (let i = 0; i < 8; i++) {
+    const b = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.16, 14), MAT.solder.clone());
+    b.position.set(mpuPinX(i), 0.16, 0.6); b.scale.setScalar(0.001); root.add(b); blobs.push(b);
+  }
+  scenes.push({
+    root, view: { pos: V(2.8, 3.6, 4.2), target: V(0, 0, 0.3) },
+    update(t) {
+      header.position.y = lerp(-2.4, -0.205, ease(seg(t, 0.05, 0.25)));
+      const s = seg(t, 0.3, 0.95);
+      const k = Math.min(7, Math.floor(s * 8));
+      const local = s * 8 - k;
+      iron.visible = t > 0.27 && t < 0.98;
+      iron.position.set(mpuPinX(k) + 0.06, 0.22 + (local < 0.15 ? (0.15 - local) * 2 : 0), 0.6);
+      blobs.forEach((b, i) => {
+        const done = s * 8 - i;
+        const f = clamp01((done - 0.2) / 0.5);
+        b.scale.setScalar(Math.max(0.001, f));
+        const hot = done > 0.2 && done < 1.0 ? 1 - Math.abs(done - 0.6) / 0.4 : 0;
+        b.material.emissive.setRGB(0.9 * hot, 0.35 * hot, 0);
+      });
+    },
+  });
+  ['VCC', 'GND', 'SCL', 'SDA'].forEach((n, i) => label(n, worldOf(mpu, V(mpuPinX(i), 0.35, 0.95)), { step: 3, from: 0.02 }));
+  label('short pins up through the board', worldOf(mpu, V(1.6, -0.5, 0.6)), { step: 3, from: 0.12 });
+  label('1–2 s heat, then solder', () => iron.localToWorld(V(0, 1.4, 0)), { step: 3, from: 0.3, hot: true });
+})();
+
+// ---- Step 5: wiring (Phase B) ---------------------------------------------
+(function () {
+  const root = new THREE.Group();
+  const cam = makeEsp32Cam(); root.add(cam.group);
+  const ribbon = makeRibbon(); cam.group.add(ribbon);
+  const module = makeCameraModule(); cam.group.add(module);
+  poseCamera(ribbon, module, V(0, 0.2, -1.06), Math.PI);
+  const mpu = makeMPU(); mpu.position.set(-4.6, -1.4, 0.4); root.add(mpu);
+  const mh = makeHeader(); mh.position.set(0, -0.205, 0.6); mpu.add(mh);
+  const bank = makePowerBank(); bank.position.set(4.6, -2.2, -0.6); root.add(bank);
+
+  const pinTip = (side, i) => cam.group.localToWorld(pinLocal(side, i));
+  const mpuTip = (i) => mpu.localToWorld(V(mpuPinX(i), -0.8, 0.6));
+  root.updateMatrixWorld(true);
+  const W = (a, b, mid, matl) => tube([a, a.clone().add(V(0, -0.5, 0)), mid, b.clone().add(V(0, -0.5, 0)), b], 0.045, matl);
+  const vcc = W(pinTip('R', 0), mpuTip(0), V(-2.2, -2.0, 1.3), MAT.red);
+  const gnd = W(pinTip('R', 3), mpuTip(1), V(-2.2, -2.15, 0.6), MAT.wireBlack);
+  const scl = W(pinTip('L', 5), mpuTip(2), V(-0.6, -2.35, -1.6), MAT.yellow);
+  const sda = W(pinTip('L', 4), mpuTip(3), V(-0.9, -2.45, -1.9), MAT.green);
+  const usbC = tube([V(4.6, -1.95, -2.1), V(4.2, -1.6, -2.8), V(2.6, -1.9, -0.9), V(1.6, -1.6, 0.6)], 0.07, MAT.black);
+  const p5v = tube([V(1.6, -1.6, 0.6), V(1.4, -1.4, 1.1), pinTip('L', 0).add(V(0, -0.5, 0)), pinTip('L', 0)], 0.05, MAT.red);
+  const pgnd = tube([V(1.6, -1.6, 0.6), V(1.5, -1.5, 0.9), pinTip('L', 1).add(V(0, -0.5, 0)), pinTip('L', 1)], 0.05, MAT.wireBlack);
+  const wires = [usbC, p5v, pgnd, vcc, gnd, scl, sda];
+  wires.forEach((w) => root.add(w));
+  const cap = new THREE.Group();
+  const capBody = cyl(0.25, 0.8, MAT.capBlue); cap.add(capBody);
+  const stripe = new THREE.Mesh(new THREE.CylinderGeometry(0.255, 0.255, 0.8, 24, 1, true, 0, 0.7), MAT.grey); cap.add(stripe);
+  cap.position.set(ROWX + 0.15, 0.75, pinZ(0.5)); cap.rotation.y = -Math.PI / 2 - 0.35; cam.group.add(cap);
+  scenes.push({
+    root, view: { pos: V(2.2, 5.5, -12.5), target: V(0, -1.3, 0) },
+    update(t) {
+      cap.visible = t > 0.08;
+      cap.scale.setScalar(Math.max(0.001, ease(seg(t, 0.08, 0.18))));
+      grow(usbC, seg(t, 0.2, 0.32)); grow(p5v, seg(t, 0.32, 0.42)); grow(pgnd, seg(t, 0.34, 0.44));
+      grow(vcc, seg(t, 0.5, 0.62)); grow(gnd, seg(t, 0.6, 0.72)); grow(scl, seg(t, 0.7, 0.82)); grow(sda, seg(t, 0.8, 0.92));
+    },
+  });
+  label('1000 µF: long leg → 5V', worldOf(cam.group, V(ROWX + 0.2, 1.35, pinZ(0.5))), { step: 4, from: 0.1, hot: true });
+  label('red → 5V', () => pinTip('L', 0).add(V(1.6, 0.3, 0.6)), { step: 4, from: 0.38 });
+  label('black → GND', () => pinTip('L', 1).add(V(1.7, -0.4, 0.9)), { step: 4, from: 0.4 });
+  label('power bank', worldOf(bank, V(0, 0.6, 0.6)), { step: 4, from: 0.2 });
+  label('3V3 → VCC', () => pinTip('R', 0).add(V(-0.2, -0.3, 0.3)), { step: 4, from: 0.55 });
+  label('GND → GND', () => pinTip('R', 3).add(V(-0.3, -0.35, 0)), { step: 4, from: 0.65 });
+  label('IO14 → SCL', () => V(-0.6, -2.35, -1.6), { step: 4, from: 0.75, hot: true });
+  label('IO15 → SDA', () => V(-1.1, -2.75, -2.3), { step: 4, from: 0.85, hot: true });
+  label('MPU6050', worldOf(mpu, V(0, 0.4, -0.6)), { step: 4, from: 0 });
+})();
+
+// ---- Step 6: box on the cap (Phase B) -------------------------------------
+(function () {
+  const root = new THREE.Group();
+  const head = new THREE.Mesh(new THREE.SphereGeometry(1.0, 40, 28), MAT.skin); head.scale.set(0.9, 1.1, 1.0); root.add(head);
+  const crown = new THREE.Mesh(new THREE.SphereGeometry(1.0, 40, 20, 0, Math.PI * 2, 0, Math.PI / 2), MAT.navy);
+  crown.scale.set(0.95, 0.9, 1.06); crown.position.y = 0.32; root.add(crown);
+  const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.95, 0.05, 32, 1, false, -Math.PI / 2, Math.PI), MAT.navyDark);
+  brim.scale.set(1, 1, 0.9); brim.position.set(0, 0.3, -0.75); brim.rotation.x = -0.08; root.add(brim);
+  const unit = new THREE.Group();
+  const shell = box(0.62, 0.45, 0.3, MAT.plastic); unit.add(shell);
+  const lens = cyl(0.12, 0.08, MAT.black, 20); lens.rotation.x = Math.PI / 2; lens.position.z = -0.17; unit.add(lens);
+  const lensGlass = cyl(0.06, 0.02, MAT.glass, 16); lensGlass.rotation.x = Math.PI / 2; lensGlass.position.z = -0.21; unit.add(lensGlass);
+  root.add(unit);
+  const coneLen = 6;
+  const fov = new THREE.Mesh(new THREE.ConeGeometry(Math.tan(0.47) * coneLen, coneLen, 32, 1, true), MAT.cone);
+  fov.rotation.x = Math.PI / 2; fov.position.z = -coneLen / 2 - 0.2;
+  const fovHolder = new THREE.Group(); fovHolder.add(fov); unit.add(fovHolder);
+  const cable = tube([V(0, 0.95, -0.72), V(0, 1.32, -0.2), V(0, 1.22, 0.6), V(0, 0.55, 1.1), V(0, -0.6, 1.1), V(0.1, -2.4, 1.25)], 0.035, MAT.black);
+  root.add(cable);
+  const bank = makePowerBank(); bank.scale.setScalar(0.5); bank.rotation.x = Math.PI / 2; bank.position.set(0.15, -2.1, 1.4); root.add(bank);
+  const mount = V(0, 0.82, -0.86);
+  scenes.push({
+    root, view: { pos: V(6.5, 2.4, -3.6), target: V(0, 0.2, -1.2) },
+    update(t) {
+      const fly = ease(seg(t, 0.05, 0.3));
+      unit.position.set(lerp(1.8, mount.x, fly), lerp(2.2, mount.y, fly), lerp(-2.2, mount.z, fly));
+      unit.rotation.x = -0.49 * ease(seg(t, 0.35, 0.5));    // ~28 degrees down
+      grow(cable, seg(t, 0.52, 0.75));
+      bank.visible = t > 0.7;
+      fov.material.opacity = 0.2 * seg(t, 0.78, 0.92);
+      fov.visible = t > 0.78;
+    },
+  });
+  label('Velcro, just above the peak', () => unit.localToWorld(V(0.45, 0.25, 0)), { step: 5, from: 0.25 });
+  label('tilt 25–30° down (foam wedge)', () => unit.localToWorld(V(0, 0.55, -0.1)), { step: 5, from: 0.45, hot: true });
+  label('cable to back pocket', worldOf(root, V(0.2, -0.6, 1.3)), { step: 5, from: 0.6 });
+  label('camera view', worldOf(root, V(0, -0.9, -4.6)), { step: 5, from: 0.85 });
+})();
+
+scenes.forEach((s) => { s.root.visible = false; scene.add(s.root); });
+
+/* ================================================== playback */
+let current = 0, t = 0, playing = true, last = performance.now(), clockT = 0;
+let tween = null;
+
+function goTo(i) {
+  current = Math.max(0, Math.min(STEPS.length - 1, i));
+  scenes.forEach((s, k) => { s.root.visible = k === current; });
+  t = reduceMotion ? 1 : 0;
+  playing = !reduceMotion;
+  const v = scenes[current].view;
+  tween = { fromPos: camera.position.clone(), fromTarget: controls.target.clone(), toPos: v.pos, toTarget: v.target, k: 0 };
+  render_detail();
+}
+function render_detail() {
+  const s = STEPS[current];
+  STEPS.forEach((_, k) => { const b = document.getElementById('stepbtn' + k); if (k === current) b.setAttribute('aria-current', 'step'); else b.removeAttribute('aria-current'); });
+  detailEl.innerHTML =
+    `<span class="chip ${s.phase === 'now' ? 'now' : 'later'}">${s.phase === 'now' ? 'Do now · parts you have' : 'Phase B preview'}</span>` +
+    `<h2>${current + 1}. ${s.title}</h2>` +
+    (s.need ? `<p class="need">${s.need}</p>` : '') +
+    `<ol>${s.items.map((x) => `<li>${x}</li>`).join('')}</ol>` +
+    `<div class="check"><b>Check:</b> ${s.check}</div>`;
+  countEl.textContent = `${current + 1} / ${STEPS.length}`;
+  prevBtn.disabled = current === 0;
+  nextBtn.disabled = current === STEPS.length - 1;
+}
+
+playBtn.addEventListener('click', () => { t = 0; playing = true; });
+prevBtn.addEventListener('click', () => goTo(current - 1));
+nextBtn.addEventListener('click', () => goTo(current + 1));
+scrub.addEventListener('input', () => { t = scrub.value / 1000; playing = false; });
+window.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.key === 'ArrowRight') goTo(current + 1);
+  if (e.key === 'ArrowLeft') goTo(current - 1);
+});
+
+function resize() {
+  const w = vp.clientWidth, h = vp.clientHeight;
+  if (!w || !h) return;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(vp);
+resize();
+
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  clockT += dt;
+  if (playing) {
+    t += dt / STEPS[current].dur;
+    if (t >= 1) { t = 1; playing = false; }
+  }
+  scrub.value = Math.round(t * 1000);
+  playBtn.textContent = playing ? 'Playing…' : 'Replay';
+  if (tween) {
+    tween.k = Math.min(1, tween.k + dt / 1.0);
+    const e = ease(tween.k);
+    camera.position.lerpVectors(tween.fromPos, tween.toPos, e);
+    controls.target.lerpVectors(tween.fromTarget, tween.toTarget, e);
+    if (tween.k >= 1) tween = null;
+  }
+  scenes[current].update(t, clockT);
+  controls.update();
+  renderer.render(scene, camera);
+  updateLabels(current, t);
+  requestAnimationFrame(frame);
+}
+
+let start = 0;
+try { const h = (location.hash || '').replace('#step', ''); if (/^[1-6]$/.test(h)) start = Number(h) - 1; } catch (e) {}
+const v0 = scenes[start].view;
+camera.position.copy(v0.pos); controls.target.copy(v0.target);
+goTo(start);
+tween = null;
+requestAnimationFrame(frame);
+})();
+</script>
+</body></html>

@@ -85,31 +85,197 @@ static const char *STREAM_PART =
 httpd_handle_t stream_httpd = NULL;
 httpd_handle_t index_httpd  = NULL;
 
+// ------------------------------------------------------- camera settings
+// Changeable at runtime through GET /control (see control_handler), so camera
+// settings can be tuned without re-flashing. Defaults = original behaviour.
+struct CamSettings {
+  int xclk_mhz;        // camera clock. 20 is the usual value; lower can reduce Wi-Fi interference
+  int fb_count;        // frame buffers in PSRAM (1 or 2)
+  bool grab_latest;    // true = CAMERA_GRAB_LATEST, false = CAMERA_GRAB_WHEN_EMPTY
+  framesize_t size;    // FRAMESIZE_QVGA (320x240) ... FRAMESIZE_VGA (640x480)
+  int quality;         // JPEG quality 10..63, lower number = better = bigger
+};
+static CamSettings cam = { 20, 2, true, FRAMESIZE_VGA, 12 };
+static bool camReady = false;
+static volatile bool streamActive = false;
+static volatile bool reconfiguring = false;
+
+static const char *size_name(framesize_t s) {
+  switch (s) {
+    case FRAMESIZE_QQVGA: return "qqvga";
+    case FRAMESIZE_QVGA:  return "qvga";
+    case FRAMESIZE_CIF:   return "cif";
+    case FRAMESIZE_HVGA:  return "hvga";
+    case FRAMESIZE_VGA:   return "vga";
+    default:              return "other";
+  }
+}
+
+static bool parse_size(const char *v, framesize_t *out) {
+  if (!strcmp(v, "qqvga")) { *out = FRAMESIZE_QQVGA; return true; }   // 160x120
+  if (!strcmp(v, "qvga"))  { *out = FRAMESIZE_QVGA;  return true; }   // 320x240
+  if (!strcmp(v, "cif"))   { *out = FRAMESIZE_CIF;   return true; }   // 400x296
+  if (!strcmp(v, "hvga"))  { *out = FRAMESIZE_HVGA;  return true; }   // 480x320
+  if (!strcmp(v, "vga"))   { *out = FRAMESIZE_VGA;   return true; }   // 640x480
+  return false;
+}
+
+static esp_err_t start_camera(const CamSettings &st) {
+  camera_config_t config = {};   // zero every field, including ones this sketch does not set
+  config.ledc_channel = LEDC_CHANNEL_0;
+  config.ledc_timer   = LEDC_TIMER_0;
+  config.pin_d0 = Y2_GPIO_NUM;   config.pin_d1 = Y3_GPIO_NUM;
+  config.pin_d2 = Y4_GPIO_NUM;   config.pin_d3 = Y5_GPIO_NUM;
+  config.pin_d4 = Y6_GPIO_NUM;   config.pin_d5 = Y7_GPIO_NUM;
+  config.pin_d6 = Y8_GPIO_NUM;   config.pin_d7 = Y9_GPIO_NUM;
+  config.pin_xclk = XCLK_GPIO_NUM;   config.pin_pclk  = PCLK_GPIO_NUM;
+  config.pin_vsync = VSYNC_GPIO_NUM; config.pin_href  = HREF_GPIO_NUM;
+  config.pin_sccb_sda = SIOD_GPIO_NUM;
+  config.pin_sccb_scl = SIOC_GPIO_NUM;
+  config.pin_pwdn = PWDN_GPIO_NUM;   config.pin_reset = RESET_GPIO_NUM;
+  config.xclk_freq_hz = st.xclk_mhz * 1000000;
+  config.pixel_format = PIXFORMAT_JPEG;
+  // LATEST throws away stale frames instead of queuing them (newest-frame-only).
+  config.grab_mode = st.grab_latest ? CAMERA_GRAB_LATEST : CAMERA_GRAB_WHEN_EMPTY;
+  config.fb_location = CAMERA_FB_IN_PSRAM;
+  config.frame_size = st.size;
+  config.jpeg_quality = st.quality;
+  config.fb_count = st.fb_count;
+  if (!psramFound()) {
+    // No PSRAM: fall back hard, otherwise the allocator fails at init.
+    config.frame_size  = FRAMESIZE_QVGA;
+    config.jpeg_quality = 15;
+    config.fb_count    = 1;
+    config.fb_location = CAMERA_FB_IN_DRAM;
+  }
+
+  esp_err_t err = esp_camera_init(&config);
+  if (err != ESP_OK) return err;
+
+  // Sensor-specific correction. The OV3660 ships upside down and oversaturated.
+  sensor_t *s = esp_camera_sensor_get();
+  if (s->id.PID == OV3660_PID) {
+    s->set_vflip(s, 1);
+    s->set_brightness(s, 1);
+    s->set_saturation(s, -2);
+  }
+  // Bias the exposure towards the floor, which is the half that matters.
+  s->set_gain_ctrl(s, 1);
+  s->set_exposure_ctrl(s, 1);
+  s->set_ae_level(s, 1);
+  return ESP_OK;
+}
+
 // ------------------------------------------------------------ MJPEG stream
 static esp_err_t stream_handler(httpd_req_t *req) {
   camera_fb_t *fb = NULL;
   esp_err_t res = ESP_OK;
   char part_buf[64];
 
+  if (reconfiguring || !camReady) {
+    httpd_resp_set_status(req, "503 Service Unavailable");
+    return httpd_resp_send(req, "camera restarting", HTTPD_RESP_USE_STRLEN);
+  }
   res = httpd_resp_set_type(req, STREAM_CONTENT_TYPE);
   if (res != ESP_OK) return res;
   httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+  Serial.println("[http] stream client connected");
+  streamActive = true;
+
+  // Per-session counters, so the log shows whether frames actually reach the client.
+  uint32_t frames = 0;
+  uint64_t bytes = 0;
+  int64_t t0 = esp_timer_get_time();
+  int64_t lastReport = t0;
 
   while (true) {
+    if (reconfiguring) break;      // /control is restarting the camera; end this stream
     fb = esp_camera_fb_get();
     if (!fb) { res = ESP_FAIL; break; }
+    size_t len = fb->len;
 
-    size_t hlen = snprintf(part_buf, sizeof(part_buf), STREAM_PART, fb->len);
+    size_t hlen = snprintf(part_buf, sizeof(part_buf), STREAM_PART, len);
     res = httpd_resp_send_chunk(req, part_buf, hlen);
     if (res == ESP_OK)
-      res = httpd_resp_send_chunk(req, (const char *)fb->buf, fb->len);
+      res = httpd_resp_send_chunk(req, (const char *)fb->buf, len);
     if (res == ESP_OK)
       res = httpd_resp_send_chunk(req, STREAM_BOUNDARY, strlen(STREAM_BOUNDARY));
 
     esp_camera_fb_return(fb);
     if (res != ESP_OK) break;      // client disconnected
+
+    frames++;
+    bytes += len;
+    int64_t now = esp_timer_get_time();
+    if (frames == 1)
+      Serial.printf("[http] first frame sent: %u bytes\n", (unsigned)len);
+    if (now - lastReport >= 5000000) {   // every 5 s
+      float secs = (now - t0) / 1e6f;
+      Serial.printf("[http] streaming: %lu frames, %.1f fps, %.0f KB/s\n",
+                    (unsigned long)frames, frames / secs, bytes / 1024.0f / secs);
+      lastReport = now;
+    }
   }
+  float secs = (esp_timer_get_time() - t0) / 1e6f;
+  Serial.printf("[http] stream client gone (%s) after %.1f s, %lu frames sent\n",
+                esp_err_to_name(res), secs, (unsigned long)frames);
+  streamActive = false;
   return res;
+}
+
+// ------------------------------------------------------- settings endpoint
+// GET /control                      -> current settings as JSON
+// GET /control?xclk=10&fb=1&grab=empty&size=qvga&q=12  -> restart camera with them
+static esp_err_t control_handler(httpd_req_t *req) {
+  CamSettings next = cam;
+  bool change = false, bad = false;
+  char query[160], v[16];
+  if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+    if (httpd_query_key_value(query, "xclk", v, sizeof(v)) == ESP_OK) {
+      int x = atoi(v); if (x >= 6 && x <= 24) { next.xclk_mhz = x; change = true; } else bad = true;
+    }
+    if (httpd_query_key_value(query, "fb", v, sizeof(v)) == ESP_OK) {
+      int f = atoi(v); if (f == 1 || f == 2) { next.fb_count = f; change = true; } else bad = true;
+    }
+    if (httpd_query_key_value(query, "grab", v, sizeof(v)) == ESP_OK) {
+      if (!strcmp(v, "latest")) { next.grab_latest = true; change = true; }
+      else if (!strcmp(v, "empty")) { next.grab_latest = false; change = true; }
+      else bad = true;
+    }
+    if (httpd_query_key_value(query, "size", v, sizeof(v)) == ESP_OK) {
+      if (parse_size(v, &next.size)) change = true; else bad = true;
+    }
+    if (httpd_query_key_value(query, "q", v, sizeof(v)) == ESP_OK) {
+      int q = atoi(v); if (q >= 10 && q <= 63) { next.quality = q; change = true; } else bad = true;
+    }
+  }
+
+  esp_err_t err = ESP_OK;
+  if (change && !bad) {
+    reconfiguring = true;
+    for (int i = 0; i < 150 && streamActive; i++) vTaskDelay(pdMS_TO_TICKS(20));   // up to 3 s
+    if (camReady) esp_camera_deinit();
+    camReady = false;
+    err = start_camera(next);
+    if (err == ESP_OK) {
+      cam = next;
+    } else {
+      Serial.printf("[cam] restart with new settings failed (%s), restoring previous\n", esp_err_to_name(err));
+      start_camera(cam);
+    }
+    camReady = true;
+    reconfiguring = false;
+    Serial.printf("[cam] settings now xclk=%dMHz fb=%d grab=%s size=%s q=%d\n", cam.xclk_mhz,
+                  cam.fb_count, cam.grab_latest ? "latest" : "empty", size_name(cam.size), cam.quality);
+  }
+
+  char json[200];
+  snprintf(json, sizeof(json),
+           "{\"ok\":%s,\"error\":\"%s\",\"xclk_mhz\":%d,\"fb\":%d,\"grab\":\"%s\",\"size\":\"%s\",\"q\":%d}",
+           (!bad && err == ESP_OK) ? "true" : "false", bad ? "invalid value" : esp_err_to_name(err),
+           cam.xclk_mhz, cam.fb_count, cam.grab_latest ? "latest" : "empty", size_name(cam.size), cam.quality);
+  httpd_resp_set_type(req, "application/json");
+  return httpd_resp_send(req, json, HTTPD_RESP_USE_STRLEN);
 }
 
 // ----------------------------------------------------------- landing page
@@ -123,6 +289,7 @@ static esp_err_t index_handler(httpd_req_t *req) {
     "<p>Stream URL for the project:<br><code>http://192.168.4.1:81/stream</code></p>"
     "<img src='http://192.168.4.1:81/stream' style='max-width:100%;border:2px solid #555'>"
     "</body></html>";
+  Serial.println("[http] GET /  (landing page / health probe)");
   httpd_resp_set_type(req, "text/html");
   return httpd_resp_send(req, page, strlen(page));
 }
@@ -132,14 +299,21 @@ static void start_servers() {
   cfg.server_port = 80;
   cfg.ctrl_port   = 32768;
   httpd_uri_t index_uri = { "/", HTTP_GET, index_handler, NULL };
-  if (httpd_start(&index_httpd, &cfg) == ESP_OK)
+  esp_err_t err = httpd_start(&index_httpd, &cfg);
+  Serial.printf("[http] port 80 server start: %s\n", esp_err_to_name(err));
+  httpd_uri_t control_uri = { "/control", HTTP_GET, control_handler, NULL };
+  if (err == ESP_OK) {
     httpd_register_uri_handler(index_httpd, &index_uri);
+    httpd_register_uri_handler(index_httpd, &control_uri);
+  }
 
   // The stream lives on its own port so a slow browser tab cannot block it.
   cfg.server_port = 81;
   cfg.ctrl_port   = 32769;
   httpd_uri_t stream_uri = { "/stream", HTTP_GET, stream_handler, NULL };
-  if (httpd_start(&stream_httpd, &cfg) == ESP_OK)
+  err = httpd_start(&stream_httpd, &cfg);
+  Serial.printf("[http] port 81 server start: %s\n", esp_err_to_name(err));
+  if (err == ESP_OK)
     httpd_register_uri_handler(stream_httpd, &stream_uri);
 }
 
@@ -154,58 +328,14 @@ void setup() {
   delay(400);
   Serial.setDebugOutput(false);
 
-  camera_config_t config;
-  config.ledc_channel = LEDC_CHANNEL_0;
-  config.ledc_timer   = LEDC_TIMER_0;
-  config.pin_d0 = Y2_GPIO_NUM;   config.pin_d1 = Y3_GPIO_NUM;
-  config.pin_d2 = Y4_GPIO_NUM;   config.pin_d3 = Y5_GPIO_NUM;
-  config.pin_d4 = Y6_GPIO_NUM;   config.pin_d5 = Y7_GPIO_NUM;
-  config.pin_d6 = Y8_GPIO_NUM;   config.pin_d7 = Y9_GPIO_NUM;
-  config.pin_xclk = XCLK_GPIO_NUM;   config.pin_pclk  = PCLK_GPIO_NUM;
-  config.pin_vsync = VSYNC_GPIO_NUM; config.pin_href  = HREF_GPIO_NUM;
-  config.pin_sccb_sda = SIOD_GPIO_NUM;
-  config.pin_sccb_scl = SIOC_GPIO_NUM;
-  config.pin_pwdn = PWDN_GPIO_NUM;   config.pin_reset = RESET_GPIO_NUM;
-  config.xclk_freq_hz = 20000000;
-  config.pixel_format = PIXFORMAT_JPEG;
-
-  // CAMERA_GRAB_LATEST matters: it throws away stale frames instead of queuing
-  // them, which is the same newest-frame-only policy the Python grabber uses.
-  config.grab_mode = CAMERA_GRAB_LATEST;
-  config.fb_location = CAMERA_FB_IN_PSRAM;
-
-  if (psramFound()) {
-    config.frame_size   = FRAMESIZE_VGA;   // 640x480 - matches the project
-    config.jpeg_quality = 12;              // lower number = better = bigger
-    config.fb_count     = 2;
-  } else {
-    // No PSRAM: fall back hard, otherwise the allocator fails at init.
-    config.frame_size   = FRAMESIZE_QVGA;  // 320x240
-    config.jpeg_quality = 15;
-    config.fb_count     = 1;
-    config.fb_location  = CAMERA_FB_IN_DRAM;
-  }
-
-  esp_err_t err = esp_camera_init(&config);
+  esp_err_t err = start_camera(cam);
   if (err != ESP_OK) {
     Serial.printf("\n[cam] INIT FAILED 0x%x\n", err);
     Serial.println("[cam] check the ribbon cable is fully seated and latched.");
     delay(3000);
     ESP.restart();
   }
-
-  // Sensor-specific correction. The OV3660 ships upside down and oversaturated.
-  sensor_t *s = esp_camera_sensor_get();
-  if (s->id.PID == OV3660_PID) {
-    s->set_vflip(s, 1);
-    s->set_brightness(s, 1);
-    s->set_saturation(s, -2);
-  }
-  // Mounted high and tilted down, the ceiling is bright and the floor is dark.
-  // Bias the exposure towards the floor, which is the half that matters.
-  s->set_gain_ctrl(s, 1);
-  s->set_exposure_ctrl(s, 1);
-  s->set_ae_level(s, 1);
+  camReady = true;
 
   WiFi.mode(WIFI_AP);
   WiFi.softAP(AP_SSID, AP_PASS, AP_CHANNEL);
