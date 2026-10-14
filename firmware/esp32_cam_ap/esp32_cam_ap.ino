@@ -1,5 +1,5 @@
 /*
- * BLENAV_CAM - ESP32-CAM as the ceiling camera for the navigation system.
+ * BLENAV_CAM - ESP32-CAM as the cap camera for the CapSight navigation app.
  *
  * Creates its OWN WiFi hotspot and serves an MJPEG stream. The laptop joins
  * that hotspot directly, so the demo does not depend on college WiFi (which
@@ -95,7 +95,10 @@ struct CamSettings {
   framesize_t size;    // FRAMESIZE_QVGA (320x240) ... FRAMESIZE_VGA (640x480)
   int quality;         // JPEG quality 10..63, lower number = better = bigger
 };
-static CamSettings cam = { 20, 2, true, FRAMESIZE_VGA, 12 };
+// 8 MHz camera clock is REQUIRED on this board: at 10-20 MHz the clock interferes with
+// the on-board antenna and the stream stalls after ~2 packets (measured 6 Oct / 14 Oct 2026:
+// 20 MHz = 0 fps, 8 MHz = 11 fps). 320x240 is what the app's detector uses anyway.
+static CamSettings cam = { 8, 2, true, FRAMESIZE_QVGA, 12 };
 static bool camReady = false;
 static volatile bool streamActive = false;
 static volatile bool reconfiguring = false;
@@ -167,6 +170,26 @@ static esp_err_t start_camera(const CamSettings &st) {
 }
 
 // ------------------------------------------------------------ MJPEG stream
+// Diagnostic source modes (GET /stream?src=...):
+//   camera (default) send each camera frame straight from its PSRAM buffer
+//   copy             copy each frame into internal RAM, release the camera buffer, then send the copy
+//   dummy            camera keeps running, but send a fixed 20 KB frame from internal RAM
+static const size_t TX_BUF_BYTES = 64 * 1024;
+static uint8_t *txBuf = NULL;            // internal-RAM buffer for "copy" and "dummy"
+
+static uint8_t *internal_tx_buffer() {
+  if (!txBuf) {
+    txBuf = (uint8_t *)heap_caps_malloc(TX_BUF_BYTES, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (txBuf) {
+      memset(txBuf, 0x55, TX_BUF_BYTES);
+      txBuf[0] = 0xFF; txBuf[1] = 0xD8;
+    }
+    Serial.printf("[http] internal tx buffer %s (%u bytes)\n", txBuf ? "ready" : "ALLOC FAILED",
+                  (unsigned)TX_BUF_BYTES);
+  }
+  return txBuf;
+}
+
 static esp_err_t stream_handler(httpd_req_t *req) {
   camera_fb_t *fb = NULL;
   esp_err_t res = ESP_OK;
@@ -176,10 +199,25 @@ static esp_err_t stream_handler(httpd_req_t *req) {
     httpd_resp_set_status(req, "503 Service Unavailable");
     return httpd_resp_send(req, "camera restarting", HTTPD_RESP_USE_STRLEN);
   }
+
+  char query[64], src[12] = "camera";
+  if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK)
+    httpd_query_key_value(query, "src", src, sizeof(src));
+  const bool useCopy = !strcmp(src, "copy");
+  const bool useDummy = !strcmp(src, "dummy");
+  if ((useCopy || useDummy) && !internal_tx_buffer()) {
+    httpd_resp_set_status(req, "500 Internal Server Error");
+    return httpd_resp_send(req, "no internal buffer", HTTPD_RESP_USE_STRLEN);
+  }
+  if (useDummy) {
+    const size_t n = 20000;
+    txBuf[n - 2] = 0xFF; txBuf[n - 1] = 0xD9;
+  }
+
   res = httpd_resp_set_type(req, STREAM_CONTENT_TYPE);
   if (res != ESP_OK) return res;
   httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-  Serial.println("[http] stream client connected");
+  Serial.printf("[http] stream client connected (src=%s)\n", useCopy ? "copy" : useDummy ? "dummy" : "camera");
   streamActive = true;
 
   // Per-session counters, so the log shows whether frames actually reach the client.
@@ -190,18 +228,36 @@ static esp_err_t stream_handler(httpd_req_t *req) {
 
   while (true) {
     if (reconfiguring) break;      // /control is restarting the camera; end this stream
-    fb = esp_camera_fb_get();
-    if (!fb) { res = ESP_FAIL; break; }
-    size_t len = fb->len;
+    const uint8_t *data;
+    size_t len;
+    if (useDummy) {
+      data = txBuf;
+      len = 20000;
+    } else {
+      fb = esp_camera_fb_get();
+      if (!fb) { res = ESP_FAIL; break; }
+      len = fb->len;
+      if (useCopy) {
+        if (len > TX_BUF_BYTES) {            // frame larger than the copy buffer: skip it
+          esp_camera_fb_return(fb); fb = NULL;
+          continue;
+        }
+        memcpy(txBuf, fb->buf, len);
+        esp_camera_fb_return(fb); fb = NULL; // camera can capture the next frame while we send
+        data = txBuf;
+      } else {
+        data = fb->buf;
+      }
+    }
 
-    size_t hlen = snprintf(part_buf, sizeof(part_buf), STREAM_PART, len);
+    size_t hlen = snprintf(part_buf, sizeof(part_buf), STREAM_PART, (unsigned)len);
     res = httpd_resp_send_chunk(req, part_buf, hlen);
     if (res == ESP_OK)
-      res = httpd_resp_send_chunk(req, (const char *)fb->buf, len);
+      res = httpd_resp_send_chunk(req, (const char *)data, len);
     if (res == ESP_OK)
       res = httpd_resp_send_chunk(req, STREAM_BOUNDARY, strlen(STREAM_BOUNDARY));
 
-    esp_camera_fb_return(fb);
+    if (fb) { esp_camera_fb_return(fb); fb = NULL; }
     if (res != ESP_OK) break;      // client disconnected
 
     frames++;

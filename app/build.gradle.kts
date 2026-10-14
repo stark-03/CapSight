@@ -12,7 +12,7 @@ android {
     defaultConfig {
         applicationId = "com.example.capsight"
         minSdk = 24
-        targetSdk = 37
+        targetSdk = 36   // 37 would need the Android 17 ACCESS_LOCAL_NETWORK runtime permission to reach the ESP32 (CLAUDE.md §6.1)
         versionCode = 1
         versionName = "1.0"
 

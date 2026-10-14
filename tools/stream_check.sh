@@ -57,28 +57,47 @@ sleep 3
   curl -sS -m 5 -o "$OUT/index.html" -w "Landing page: HTTP %{http_code} in %{time_total}s\n" http://192.168.4.1/ 2>&1
 } | tee -a "$OUT/result.txt"
 
-echo "Recording 10 s of video..."
-curl -sS -m 10 -o "$OUT/stream.mjpeg" http://192.168.4.1:81/stream 2>/dev/null
-SIZE=$(stat -c%s "$OUT/stream.mjpeg" 2>/dev/null || echo 0)
-FRAMES=$(grep -c -a "Content-Type: image/jpeg" "$OUT/stream.mjpeg" 2>/dev/null || echo 0)
+# Optional: apply camera settings first, e.g.  CONTROL="xclk=8&size=qvga" bash tools/stream_check.sh
+if [ -n "${CONTROL:-}" ]; then
+  echo "Applying camera settings: $CONTROL" | tee -a "$OUT/result.txt"
+  curl -sS -m 15 "http://192.168.4.1/control?$CONTROL" 2>&1 | tee -a "$OUT/result.txt"; echo
+  sleep 3
+fi
 
-python3 - "$OUT" <<'EOF' | tee -a "$OUT/result.txt"
+# Optional arguments: stream source modes to compare, e.g.  camera copy dummy
+# (needs firmware with /stream?src=...). Without arguments: the normal stream only.
+MODES=("$@")
+[ ${#MODES[@]} -eq 0 ] && MODES=("")
+for MODE in "${MODES[@]}"; do
+  URL="http://192.168.4.1:81/stream"
+  [ -n "$MODE" ] && URL="$URL?src=$MODE"
+  echo "Recording 10 s of video from $URL ..."
+  curl -sS -m 10 -o "$OUT/stream.mjpeg" "$URL" 2>/dev/null
+  SIZE=$(stat -c%s "$OUT/stream.mjpeg" 2>/dev/null || echo 0)
+  FRAMES=$(grep -c -a "Content-Type: image/jpeg" "$OUT/stream.mjpeg" 2>/dev/null || echo 0)
+
+  python3 - "$OUT" "${MODE:-camera}" <<'EOF2' | tee -a "$OUT/result.txt"
 import sys, pathlib
-out = pathlib.Path(sys.argv[1])
+out, mode = pathlib.Path(sys.argv[1]), sys.argv[2]
 data = (out / "stream.mjpeg").read_bytes() if (out / "stream.mjpeg").exists() else b""
 start = data.find(b"\xff\xd8")
 end = data.find(b"\xff\xd9", start + 2) if start >= 0 else -1
-if start >= 0 and end > start:
-    (out / "first_frame.jpg").write_bytes(data[start:end + 2])
-    print(f"First frame saved: {out / 'first_frame.jpg'} ({end + 2 - start} bytes)")
+if mode == "dummy":
+    pass
+elif start >= 0 and end > start:
+    name = f"first_frame_{mode}.jpg"
+    (out / name).write_bytes(data[start:end + 2])
+    print(f"First frame saved: {out / name} ({end + 2 - start} bytes)")
 else:
     print("No complete JPEG frame received.")
-EOF
+EOF2
 
-{
-  echo "Stream: $SIZE bytes, $FRAMES frames in 10 s (about $((FRAMES / 10)) fps)"
-  if [ "$FRAMES" -ge 30 ]; then echo "RESULT: board streams fine to the laptop -> the problem is on the phone side."
-  elif [ "$FRAMES" -ge 1 ]; then echo "RESULT: board streams but slowly/unstably -> suspect power or Wi-Fi link."
-  else echo "RESULT: no frames even to the laptop -> problem is on the board (power, camera or firmware)."
-  fi
-} | tee -a "$OUT/result.txt"
+  {
+    echo "[${MODE:-camera}] Stream: $SIZE bytes, $FRAMES frames in 10 s (about $((FRAMES / 10)) fps)"
+    if [ "$FRAMES" -ge 30 ]; then echo "RESULT: streams fine to the laptop."
+    elif [ "$FRAMES" -ge 1 ]; then echo "RESULT: streams but slowly/unstably."
+    else echo "RESULT: no frames reached the laptop."
+    fi
+  } | tee -a "$OUT/result.txt"
+  sleep 2
+done

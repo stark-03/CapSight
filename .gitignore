@@ -19,3 +19,8 @@ __pycache__/
 keystore.properties
 *.jks
 *.keystore
+
+# ML working data (large)
+/ml/dataset/
+/ml/runs/
+/ml/*.pt.bak

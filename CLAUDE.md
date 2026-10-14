@@ -19,6 +19,7 @@ Read this whole file before changing code. When a request conflicts with it, ask
 | App technology | **Native Kotlin + Jetpack Compose**. Not React Native, not Flutter. | Frame decoding, inference and the 10 Hz safety loop must run natively and keep running with the screen off. The user ruled out anything that risks smoothness. |
 | Where AI runs | **On the phone.** No cloud, no laptop, no internet. | SRS constraint; works offline anywhere. |
 | Minimum Android | **Android 7.0 Nougat, API 24** (`minSdk = 24`). | User decision for ~99% device reach. **Supersedes the SRS, which says API 29.** See §6 for what this costs. |
+| Target Android | **`targetSdk = 36`** (compileSdk stays 37). Do NOT raise to 37. | Android 17 blocks LAN access for apps targeting SDK 37 unless they hold the runtime `ACCESS_LOCAL_NETWORK` permission (NEARBY_DEVICES group); without it every connection to 192.168.4.1 silently times out. Found 14 Oct 2026 on the Pixel 9a (Android 17): shell user reached the ESP32, app user timed out; targetSdk 36 fixed it. Raising to 37 later requires declaring + requesting that permission first. |
 | Camera hardware | **AI-Thinker-style ESP32-CAM (ESP-32S module) with an OV3660 sensor**, confirmed from the user's photos (2 Oct 2026): pin headers already soldered, PSRAM chip present (so firmware runs 640×480), camera ribbon not yet attached. No MB programmer yet. | Firmware already exists and works (§4); its OV3660 vflip fix applies. XIAO ESP32S3 Sense is the fallback board only. |
 | BLE / ceiling camera | **Removed.** | The old Phase-2 design. Kept only as reference code (§9). |
 | Distance method | Apparent object size (ported from `egocentric.py`), later fused with ground-plane geometry once the IMU exists. | Works with no calibration rig; proven in Phase 2. |
@@ -176,9 +177,12 @@ in the same commit and update the table in §4.4.
 - **The first frame has NO leading boundary** — the body starts directly with `Content-Type:`.
   Parse by reading headers up to `\r\n\r\n`, then exactly `Content-Length` bytes, then skip
   the boundary line. Do not rely on finding a boundary before the first frame.
-- Frames: **640×480 JPEG, quality 12** when the board has PSRAM (normal case); **320×240,
-  quality 15** without PSRAM. Read the size from the decoded JPEG, never hard-code it.
-- `CAMERA_GRAB_LATEST`: the device already drops stale frames. Expect roughly 10–20 fps at VGA.
+- Frames: **320×240 JPEG, quality 12** by default (since 14 Oct 2026, see the antenna note in
+  §4.3). Size can be changed via `/control`. Read the size from the decoded JPEG, never hard-code it.
+- `CAMERA_GRAB_LATEST`: the device already drops stale frames. Measured **~11 fps** at 320×240
+  with the 8 MHz camera clock.
+- `/stream?src=copy` (copy frame to internal RAM before sending) and `/stream?src=dummy`
+  (fixed 20 KB test frame) exist for diagnostics only; the app uses plain `/stream`.
 - OV3660 is flipped vertically in firmware (`set_vflip`). If the board is mounted
   upside down in the cap box, fix it in firmware, not in the app.
 
@@ -193,15 +197,19 @@ in the same commit and update the table in §4.4.
 - **Brownout detector is disabled** in firmware; a weak supply shows up as the stream
   dropping and the board rebooting. The app reports this as "Camera disconnected".
 - **Camera settings endpoint (added 6 Oct 2026):** `GET http://192.168.4.1/control` returns
-  `{"ok":true,"error":"ESP_OK","xclk_mhz":20,"fb":2,"grab":"latest","size":"vga","q":12}`;
+  `{"ok":true,"error":"ESP_OK","xclk_mhz":8,"fb":2,"grab":"latest","size":"qvga","q":12}`;
   `GET /control?xclk=10&fb=1&grab=empty&size=qvga&q=12` restarts the camera with those
   settings (any subset of keys). Active stream clients are disconnected during the restart and
   `/stream` answers 503 meanwhile. Settings reset to the firmware defaults on reboot.
   Used by `tools/camera_tuning.sh`. No `/status` or `/imu` yet.
-- **Known issue (6 Oct 2026):** with the camera running at the original settings (20 MHz clock,
-  2 buffers, GRAB_LATEST, VGA) the whole Wi-Fi link collapses: landing page 3.3 s, stream
-  0.1–0.2 fps. With the camera off (`firmware/wifi_speed_test`) the same board does 64 fps and
-  16 ms page loads. Being tuned; update the firmware defaults and this note with the result.
+- **Camera clock MUST stay at 8 MHz (resolved 14 Oct 2026).** At 10–20 MHz the camera clock
+  interferes with this board's on-board PCB antenna: small replies get through but any transfer
+  over ~2 TCP packets stalls (0 fps). Ruled out by measurement: power supply, the MB's IO0 line,
+  PSRAM vs internal RAM, buffer count, grab mode, frame size. Camera off
+  (`firmware/wifi_speed_test`) = 64 fps; camera at 8 MHz + 320×240 = 11 fps. Matches
+  espressif/arduino-esp32 issue #4655. If frame rate must go higher later: external 2.4 GHz
+  antenna on the IPEX connector (move the 0 Ω antenna-select resistor) or foil shielding over
+  the camera ribbon. Never raise `xclk` without re-running `tools/stream_check.sh`.
 
 ### 4.4 Contract versions
 | Contract | Firmware | App | Endpoints |
