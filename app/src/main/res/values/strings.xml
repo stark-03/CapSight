@@ -1,3 +1,9 @@
 <resources>
     <string name="app_name">Cap Sight</string>
+    <string name="notification_channel">Navigation guidance</string>
+    <string name="notification_title">CapSight guidance is on</string>
+    <string name="notification_text">Speaking obstacle warnings. Tap to open.</string>
+    <string name="notification_stop">Stop</string>
+    <!-- NFR-SAFE-01: must appear on first run and in About -->
+    <string name="safety_statement">CapSight supplements the white cane. It does not replace it. Keep using your cane at all times.</string>
 </resources>

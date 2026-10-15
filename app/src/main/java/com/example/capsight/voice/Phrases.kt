@@ -13,6 +13,11 @@ object Phrases {
     const val PATH_BLOCKED = "Path blocked. Stop and turn."
     const val PATH_CLEAR = "Path clear."
 
+    /** FR-APP-02: the app announces its own state. */
+    const val NAV_STARTED = "Navigation started."
+    const val NAV_STOPPED = "Navigation stopped."
+    const val CONNECTING = "Connecting to camera."
+
     /** FR-NAV-05: on any internal failure, say "Stop" rather than go silent. */
     const val FAIL_SAFE = "Stop."
 

@@ -1,7 +1,5 @@
 package com.example.capsight.ui.debug
 
-import android.Manifest
-import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -44,7 +42,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -56,12 +53,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
-import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.capsight.camera.CameraContract
+import com.example.capsight.service.Pipeline
+import com.example.capsight.ui.AppViewModel
+import com.example.capsight.ui.rememberNavigationStarter
 import com.example.capsight.camera.Frame
 import com.example.capsight.camera.LinkState
 import com.example.capsight.camera.ReceiverStatus
@@ -85,8 +83,8 @@ private val MinTouch = 48.dp
 
 /** Debug screen: live frame with detection boxes, FPS, link state, source settings (FR-APP-05). */
 @Composable
-fun DebugScreen(modifier: Modifier = Modifier, vm: DebugViewModel = viewModel()) {
-    val settings by vm.settings.collectAsStateWithLifecycle()
+fun DebugScreen(onBack: () -> Unit, modifier: Modifier = Modifier, vm: AppViewModel = viewModel()) {
+    val settings by vm.camera.collectAsStateWithLifecycle()
     val status by vm.status.collectAsStateWithLifecycle()
     val frame by vm.frame.collectAsStateWithLifecycle()
     val running by vm.running.collectAsStateWithLifecycle()
@@ -96,37 +94,19 @@ fun DebugScreen(modifier: Modifier = Modifier, vm: DebugViewModel = viewModel())
     val speech by vm.speech.collectAsStateWithLifecycle()
     val speechSettings by vm.speechSettings.collectAsStateWithLifecycle()
     val guidance by vm.guidance.collectAsStateWithLifecycle()
-    val context = LocalContext.current
-
-    LifecycleStartEffect(vm) {
-        vm.setVisible(true)
-        onStopOrDispose { vm.setVisible(false) }
-    }
-    // Keep the screen on while testing so the receiver keeps running (until step 7's service).
+    // Guidance runs in NavigationService either way; keeping the screen on is only for watching.
     val view = LocalView.current
     DisposableEffect(running) {
         view.keepScreenOn = running
         onDispose { view.keepScreenOn = false }
     }
 
-    var permissionDenied by remember { mutableStateOf(false) }
-    val cameraPermission = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        permissionDenied = !granted
-        if (granted) vm.start()
-    }
+    val onStart = rememberNavigationStarter(vm)
     val pickVideo = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri -> if (uri != null) vm.setVideo(uri) }
 
     val s = settings ?: return
-    val onStart = {
-        val needsPermission = s.source == SourceKind.PHONE_CAMERA &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) !=
-            PackageManager.PERMISSION_GRANTED
-        if (needsPermission) cameraPermission.launch(Manifest.permission.CAMERA) else vm.start()
-    }
 
     Column(
         modifier
@@ -135,6 +115,7 @@ fun DebugScreen(modifier: Modifier = Modifier, vm: DebugViewModel = viewModel())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        TextButton(onClick = onBack, modifier = Modifier.heightIn(min = MinTouch)) { Text("← Back") }
         Text(
             "CapSight debug",
             style = MaterialTheme.typography.headlineSmall,
@@ -142,13 +123,7 @@ fun DebugScreen(modifier: Modifier = Modifier, vm: DebugViewModel = viewModel())
         )
         StatusBanner(running, status)
         FrameView(frame, status, running, detection, perceived)
-        StartStopButton(running, onStart = onStart, onStop = vm::stop)
-        if (permissionDenied) {
-            Text(
-                "Camera permission denied. Allow it in phone Settings > Apps > Cap Sight.",
-                color = Red,
-            )
-        }
+        StartStopButton(running, onStart = onStart, onStop = { vm.stopNavigation() })
         DecisionBlock(guidance)
         CaptionBlock(speech)
         StatsBlock(status)
@@ -337,7 +312,7 @@ private fun CaptionBlock(sp: SpeakerState) {
 }
 
 @Composable
-private fun SpeechSection(sp: SpeakerState, settings: SpeechSettings, vm: DebugViewModel) {
+private fun SpeechSection(sp: SpeakerState, settings: SpeechSettings, vm: AppViewModel) {
     Text("Speech", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
     val engine = when {
         sp.ttsReady -> "Ready (${sp.engine})"
@@ -352,11 +327,11 @@ private fun SpeechSection(sp: SpeakerState, settings: SpeechSettings, vm: DebugV
         style = MaterialTheme.typography.bodySmall,
     )
     val tests = listOf(
-        DebugViewModel.SpeechTest.CLEAR to "Path clear (P4)",
-        DebugViewModel.SpeechTest.AVOID to "Chair, move left (P2)",
-        DebugViewModel.SpeechTest.STOP to "Stop (P0, vibrates)",
-        DebugViewModel.SpeechTest.BURST to "Burst: 4 at once",
-        DebugViewModel.SpeechTest.INTERRUPT to "P0 interrupts",
+        Pipeline.SpeechTest.CLEAR to "Path clear (P4)",
+        Pipeline.SpeechTest.AVOID to "Chair, move left (P2)",
+        Pipeline.SpeechTest.STOP to "Stop (P0, vibrates)",
+        Pipeline.SpeechTest.BURST to "Burst: 4 at once",
+        Pipeline.SpeechTest.INTERRUPT to "P0 interrupts",
     )
     tests.chunked(2).forEach { row ->
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {

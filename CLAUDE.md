@@ -115,7 +115,9 @@ adb logcat -s CapSight            # app logs (use tag "CapSight" everywhere)
 ```
 
 Toolchain facts (from the generated project — keep them):
-- AGP **9.4.1**, Gradle **9.6.0**, Kotlin **2.2.10**, Compose BOM **2026.02.01**, `compileSdk`/`targetSdk` **37**, `minSdk` **24**, Java 11 bytecode.
+- AGP **9.4.1**, Gradle **9.6.0**, Kotlin **2.2.10**, Compose BOM **2026.02.01**, `compileSdk` **37**, `targetSdk` **36** (see §1), `minSdk` **24**, Java 11 bytecode.
+- If a terminal build fails with "jlink executable … does not exist", it reused VS Code's Gradle
+  daemon (its bundled JRE has no jlink): build with `./gradlew --no-daemon …` and `JAVA_HOME` set to the JBR.
 - AGP 9 compiles Kotlin itself. **Do not add** `org.jetbrains.kotlin.android`; only the existing `kotlin.compose` plugin is needed.
 - Dependencies go through `gradle/libs.versions.toml` only. No hard-coded versions in `build.gradle.kts`.
 - `settings.gradle.kts` uses `FAIL_ON_PROJECT_REPOS` — repositories go in settings, not in module files.
@@ -263,7 +265,7 @@ Rules:
 
 ---
 
-## 6. Android 7–16 compatibility (minSdk 24, targetSdk 37)
+## 6. Android 7–17 compatibility (minSdk 24, targetSdk 36)
 
 ### 6.1 Manifest
 Permissions:
@@ -276,11 +278,13 @@ POST_NOTIFICATIONS                          (API 33+, runtime request)
 CAMERA                                      (runtime; PhoneCameraSource test source only)
 ```
 - `<uses-feature android:name="android.hardware.camera" android:required="false"/>`.
-- If NavigationService ever runs `PhoneCameraSource` with the screen off, it also needs service
-  type `camera` + `FOREGROUND_SERVICE_CAMERA` (API 34+); decide in step 7.
-- Service: `<service android:name=".service.NavigationService" android:exported="false"
-  android:foregroundServiceType="connectedDevice"/>` and call `startForeground` with
-  `ServiceCompat.startForeground(..., FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)` on API 29+.
+- Service (decided in step 7, 15 Oct 2026): `<service android:name=".service.NavigationService"
+  android:exported="false" android:foregroundServiceType="connectedDevice|camera"/>`.
+  `ServiceCompat.startForeground` always passes `CONNECTED_DEVICE` (API 29+) and adds `CAMERA`
+  (API 30+, permission `FOREGROUND_SERVICE_CAMERA`) only when the phone-camera source is selected
+  and the CAMERA permission is granted, so the phone camera also works with the screen off. Camera
+  type can only start while the app is in the foreground; a system restart falls back to
+  connectedDevice only. The service also holds a partial wake lock and a low-latency Wi-Fi lock.
 - TTS on API 30+ needs package visibility, or the engine is invisible:
   `<queries><intent><action android:name="android.intent.action.TTS_SERVICE"/></intent></queries>`
 - Do **not** request location permission. We never read the SSID; we identify the camera with

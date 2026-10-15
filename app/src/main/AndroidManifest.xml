@@ -12,6 +12,14 @@
     <!-- P0 alerts vibrate (FR-VOICE-06); P2 too while speech is unavailable -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- Foreground service that keeps guidance running with the screen off (FR-APP-03, §6.1) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+
     <!-- API 30+: without this the text-to-speech engine is invisible (CLAUDE.md §6.1) -->
     <queries>
         <intent>
@@ -45,6 +53,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- connectedDevice: the cap camera over Wi-Fi. camera: only when the phone's own camera
+             is the source (added at start, while the app is in the foreground). -->
+        <service
+            android:name=".service.NavigationService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice|camera" />
     </application>
 
 </manifest>

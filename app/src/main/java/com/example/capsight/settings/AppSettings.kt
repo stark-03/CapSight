@@ -146,6 +146,30 @@ class AppSettings(context: Context) {
         )
     }
 
+    /** NFR-SAFE-01: the user has seen the safety statement on first run. */
+    val safetyAccepted: Flow<Boolean> = store.data.map { it[SAFETY_ACCEPTED] ?: false }
+
+    suspend fun acceptSafety() = store.edit { it[SAFETY_ACCEPTED] = true }
+
+    /** Saves a validated Settings-screen draft (FR-APP-04). Returns the problems if it is invalid. */
+    suspend fun saveHelperSettings(d: HelperSettingsDraft): Map<String, String> {
+        val errors = d.validate()
+        if (errors.isNotEmpty()) return errors
+        fun num(t: String) = t.trim().replace(',', '.').toDouble()
+        store.edit {
+            it[BASE_URL] = d.cameraBaseUrl.trim()
+            it[CAP_FOV_DEG] = num(d.capFovDeg).toFloat()
+            it[USER_HEIGHT_CM] = num(d.userHeightCm).toInt()
+            it[STOP_DISTANCE_M] = num(d.stopDistanceM).toFloat()
+            it[WARN_DISTANCE_M] = num(d.warnDistanceM).toFloat()
+            it[PHRASE_COOLDOWN_MS] = (num(d.phraseCooldownS) * MS_PER_S).toLong()
+            it[CLEAR_REPEAT_MS] = (num(d.clearRepeatS) * MS_PER_S).toLong()
+            it[SPEECH_RATE] = d.speechRate
+            it[SPEECH_VOLUME] = d.speechVolume.coerceIn(0f, 1f)
+        }
+        return emptyMap()
+    }
+
     suspend fun setSpeechRate(rate: Float) = store.edit { it[SPEECH_RATE] = rate }
 
     suspend fun setSpeakGuidance(on: Boolean) = store.edit { it[SPEAK_GUIDANCE] = on }
@@ -172,6 +196,8 @@ class AppSettings(context: Context) {
         val USE_GPU = booleanPreferencesKey("det_use_gpu")
         val SHOW_ALL_CLASSES = booleanPreferencesKey("det_show_all_classes")
         val SPEECH_RATE = floatPreferencesKey("speech_rate")
+        val SAFETY_ACCEPTED = booleanPreferencesKey("safety_accepted")
+        const val MS_PER_S = 1_000.0
         val STOP_DISTANCE_M = floatPreferencesKey("nav_stop_distance_m")
         val WARN_DISTANCE_M = floatPreferencesKey("nav_warn_distance_m")
         val STAIRS_WARN_M = floatPreferencesKey("nav_stairs_warn_m")
