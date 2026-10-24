@@ -20,6 +20,21 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
 
+    <!-- BLE landmark beacons (CLAUDE.md §4.6, §6.1). API 24-30: legacy Bluetooth permissions plus
+         fine location (runtime) to receive scan results. API 31+: BLUETOOTH_SCAN (runtime), WITHOUT
+         neverForLocation - that flag makes Android drop beacon advertisements - AND fine location:
+         without neverForLocation, Android 12+ delivers no scan results at all unless the app also
+         holds ACCESS_FINE_LOCATION (measured 23 Oct 2026 on the Pixel 9a: 0 results). -->
+    <uses-permission
+        android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+
     <!-- API 30+: without this the text-to-speech engine is invisible (CLAUDE.md §6.1) -->
     <queries>
         <intent>
@@ -30,6 +45,10 @@
     <!-- The cap camera is the real source; a phone without a rear camera still works. -->
     <uses-feature
         android:name="android.hardware.camera"
+        android:required="false" />
+    <!-- Landmarks are optional: a phone without BLE still navigates. -->
+    <uses-feature
+        android:name="android.hardware.bluetooth_le"
         android:required="false" />
 
     <application
@@ -60,6 +79,17 @@
             android:name=".service.NavigationService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice|camera" />
+
+        <!-- FR-APP-07: shares the decision logs (files/decision_logs/) with ACTION_SEND. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

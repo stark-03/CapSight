@@ -1,5 +1,9 @@
 package com.example.capsight.ui.debug
 
+import android.content.ClipData
+import android.content.Context
+import android.content.Intent
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -42,7 +46,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.core.content.FileProvider
+import com.example.capsight.record.DecisionLogState
+import java.io.File
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
@@ -56,14 +64,23 @@ import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.capsight.ble.LandmarkState
 import com.example.capsight.camera.CameraContract
 import com.example.capsight.service.Pipeline
+import com.example.capsight.service.SessionMode
 import com.example.capsight.ui.AppViewModel
+import com.example.capsight.ui.theme.CautionText
+import com.example.capsight.ui.theme.ErrorText
+import com.example.capsight.ui.landmarksOnlyStatus
 import com.example.capsight.ui.rememberNavigationStarter
+import com.example.capsight.settings.StartWish
 import com.example.capsight.camera.Frame
 import com.example.capsight.camera.LinkState
 import com.example.capsight.camera.ReceiverStatus
+import com.example.capsight.depth.DepthState
 import com.example.capsight.detect.DetectionState
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.graphics.FilterQuality
 import com.example.capsight.perception.Threat
 import com.example.capsight.settings.SpeechSettings
 import com.example.capsight.voice.SpeakerState
@@ -81,6 +98,11 @@ private val Red = Color(0xFFB71C1C)
 private val Grey = Color(0xFF424242)
 private val MinTouch = 48.dp
 
+// Text colours on the dark theme's black background (Palette.kt; >= 7:1). The colours above are
+// only used as backgrounds behind white text.
+private val ErrorTextColor = ErrorText
+private val CautionTextColor = CautionText
+
 /** Debug screen: live frame with detection boxes, FPS, link state, source settings (FR-APP-05). */
 @Composable
 fun DebugScreen(onBack: () -> Unit, modifier: Modifier = Modifier, vm: AppViewModel = viewModel()) {
@@ -89,11 +111,17 @@ fun DebugScreen(onBack: () -> Unit, modifier: Modifier = Modifier, vm: AppViewMo
     val frame by vm.frame.collectAsStateWithLifecycle()
     val running by vm.running.collectAsStateWithLifecycle()
     val detection by vm.detection.collectAsStateWithLifecycle()
+    val depth by vm.depth.collectAsStateWithLifecycle()
     val perceived by vm.perceived.collectAsStateWithLifecycle()
     val detectionSettings by vm.detectionSettings.collectAsStateWithLifecycle()
     val speech by vm.speech.collectAsStateWithLifecycle()
     val speechSettings by vm.speechSettings.collectAsStateWithLifecycle()
     val guidance by vm.guidance.collectAsStateWithLifecycle()
+    val landmarks by vm.landmarks.collectAsStateWithLifecycle()
+    val decisionLog by vm.decisionLog.collectAsStateWithLifecycle()
+    val volumeKeys by vm.volumeKeys.collectAsStateWithLifecycle()
+    val session by vm.session.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     // Guidance runs in NavigationService either way; keeping the screen on is only for watching.
     val view = LocalView.current
     DisposableEffect(running) {
@@ -115,19 +143,29 @@ fun DebugScreen(onBack: () -> Unit, modifier: Modifier = Modifier, vm: AppViewMo
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        TextButton(onClick = onBack, modifier = Modifier.heightIn(min = MinTouch)) { Text("← Back") }
+        TextButton(
+            onClick = onBack,
+            modifier = Modifier
+                .heightIn(min = MinTouch)
+                .semantics { contentDescription = "Back to helper settings" },
+        ) { Text("← Back") }
         Text(
             "CapSight debug",
             style = MaterialTheme.typography.headlineSmall,
             modifier = Modifier.semantics { heading() },
         )
-        StatusBanner(running, status)
+        StatusBanner(running, status, session)
         FrameView(frame, status, running, detection, perceived)
-        StartStopButton(running, onStart = onStart, onStop = { vm.stopNavigation() })
+        StartStopButton(running, onStart = { onStart(StartWish.SAVED) }, onStop = { vm.stopNavigation() })
         DecisionBlock(guidance)
         CaptionBlock(speech)
         StatsBlock(status)
         DetectionBlock(detection, perceived)
+        DepthBlock(depth, guidance)
+        LandmarkBlock(landmarks, onCalibrate = vm::calibrateBeaconAt1m)
+        Text("Volume keys: $volumeKeys", style = MaterialTheme.typography.bodyMedium)
+        HorizontalDivider()
+        EvaluationSection(decisionLog) { shareDecisionLog(context, vm.newestDecisionLog()) }
         HorizontalDivider()
         detectionSettings?.let { d ->
             Text("Detection", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
@@ -150,14 +188,20 @@ fun DebugScreen(onBack: () -> Unit, modifier: Modifier = Modifier, vm: AppViewMo
                 "Uses the phone's rear camera at 640x480. Point it where you walk.",
                 style = MaterialTheme.typography.bodyMedium,
             )
+            SourceKind.NONE -> Text(
+                "No camera: only BLE landmarks are spoken. Obstacles are NOT detected. " +
+                    "Needs BLE landmarks on in Settings.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
         }
     }
 }
 
 @Composable
-private fun StatusBanner(running: Boolean, status: ReceiverStatus) {
+private fun StatusBanner(running: Boolean, status: ReceiverStatus, session: SessionMode?) {
     val (text, colour) = when {
         !running -> "Stopped" to Grey
+        session?.landmarksOnly == true -> landmarksOnlyStatus(session.cameraFallback) to Amber
         status.link == LinkState.CONNECTED -> "Camera connected" to Green
         status.link == LinkState.DISCONNECTED -> "Camera disconnected" to Red
         else -> "Connecting to camera…" to Amber
@@ -239,14 +283,14 @@ private fun overlayText(s: ReceiverStatus, d: DetectionState, p: PerceivedView):
     }
     val fov = if (p.fovDeg > 0) String.format(Locale.US, "FOV %.1f° (%s)", p.fovDeg, p.fovSource) else ""
     val zones = zonesText(p)
-    return listOf("cam $fps  $size  $age", det, fov, zones).filter { it.isNotEmpty() }.joinToString("\n")
+    return listOf("cam $fps  $size  $age", det, fov, p.tilt, zones).filter { it.isNotEmpty() }.joinToString("\n")
 }
 
 @Composable
 private fun StartStopButton(running: Boolean, onStart: () -> Unit, onStop: () -> Unit) {
     Button(
         onClick = if (running) onStop else onStart,
-        colors = if (running) ButtonDefaults.buttonColors(containerColor = Red) else ButtonDefaults.buttonColors(),
+        colors = if (running) ButtonDefaults.buttonColors(containerColor = Red, contentColor = Color.White) else ButtonDefaults.buttonColors(),
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 64.dp),
@@ -271,23 +315,148 @@ private fun StatsBlock(s: ReceiverStatus) {
 
 @Composable
 private fun DetectionBlock(d: DetectionState, p: PerceivedView) {
-    if (d.error != null) Text(d.error, color = Red, style = MaterialTheme.typography.bodyMedium)
+    if (d.error != null) Text(d.error, color = ErrorTextColor, style = MaterialTheme.typography.bodyMedium)
     if (!d.running) return
     val found = if (p.objects.isEmpty()) {
         "nothing"
     } else {
         p.objects.joinToString { o ->
-            objectLabel(o) + when (o.threat) {
-                Threat.STOP -> " STOP"
-                Threat.WARN -> " WARN"
-                Threat.NONE -> ""
-            }
+            objectLabel(o) +
+                o.floorM?.let { f -> String.format(Locale.US, " [size %.1f, floor %.1f]", o.sizeM ?: 0.0, f) }.orEmpty() +
+                when (o.threat) {
+                    Threat.STOP -> " STOP"
+                    Threat.WARN -> " WARN"
+                    Threat.NONE -> ""
+                }
         }
     }
     Text(
         "Detections: $found   (frame ${d.frameSeq}, ${d.totalMs} ms total)",
         style = MaterialTheme.typography.bodyMedium,
     )
+}
+
+/**
+ * FR-OBS-04 / FR-PATH-03: "Depth: L 0.82 C 0.74 R 0.51 · 4.1 Hz · GPU" (or why depth is off), whether
+ * the depth rule is acting, and a tiny depth map (white = near).
+ */
+@Composable
+private fun DepthBlock(d: DepthState, g: GuidanceState) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        d.thumbnail?.takeIf { d.running }?.let { bmp ->
+            val image = remember(bmp) { bmp.asImageBitmap() }
+            Image(
+                bitmap = image,
+                contentDescription = null,
+                filterQuality = FilterQuality.None,
+                modifier = Modifier.size(DEPTH_THUMB_DP.dp),
+            )
+        }
+        Column {
+            Text(depthText(d), style = MaterialTheme.typography.bodyMedium)
+            depthRuleText(g)?.let { (text, alarm) ->
+                Text(text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = if (alarm) ErrorTextColor else CautionTextColor)
+            }
+        }
+    }
+}
+
+private fun depthText(d: DepthState): String {
+    if (!d.running) return "Depth: off (${d.off.ifEmpty { "not running" }})"
+    val s = d.scores
+    val zones = if (s == null) {
+        d.error ?: "waiting for the first result"
+    } else {
+        String.format(Locale.US, "L %.2f C %.2f R %.2f", s.left, s.centre, s.right)
+    }
+    return String.format(Locale.US, "Depth: %s · %.1f Hz · %s · %d ms", zones, d.hz, d.backend, d.inferenceMs)
+}
+
+/** What the depth rule is doing to guidance right now, or null when it is quiet. */
+private fun depthRuleText(g: GuidanceState): Pair<String, Boolean>? {
+    val c = g.depthCue
+    val sides = listOfNotNull("left".takeIf { c.left }, "right".takeIf { c.right })
+    val sideText = if (sides.isEmpty()) "" else "side blocked: ${sides.joinToString(" + ")}"
+    val centre = when {
+        g.depthStop -> "DEPTH RULE ACTIVE: Stop. Obstacle ahead."
+        g.depthExplained -> "depth near centre (already explained by a detection)"
+        else -> ""
+    }
+    val text = listOf(centre, sideText).filter { it.isNotEmpty() }.joinToString(" · ")
+    return if (text.isEmpty()) null else text to g.depthStop
+}
+
+private const val DEPTH_THUMB_DP = 64
+
+/**
+ * BLE landmarks (CLAUDE.md §4.6): scanner status, then each beacon heard with its estimated distance,
+ * step and smoothed RSSI; and "Calibrate at 1 m" (sets "Beacon signal at 1 m" from the strongest beacon).
+ */
+@Composable
+private fun LandmarkBlock(l: LandmarkState, onCalibrate: () -> String) {
+    val context = LocalContext.current
+    var result by remember { mutableStateOf("") }
+    Text(landmarkText(l), style = MaterialTheme.typography.bodyMedium)
+    OutlinedButton(
+        onClick = {
+            result = onCalibrate()
+            Toast.makeText(context, result, Toast.LENGTH_SHORT).show()
+        },
+        modifier = Modifier.heightIn(min = MinTouch),
+    ) { Text("Calibrate at 1 m") }
+    Text(
+        result.ifEmpty { "Hold the phone 1 m from a beacon, then tap Calibrate." },
+        style = MaterialTheme.typography.bodySmall,
+        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+    )
+}
+
+private fun landmarkText(l: LandmarkState): String {
+    if (l.beacons.isEmpty()) return l.status
+    val beacons = l.beacons.joinToString(" · ") { b ->
+        val state = when {
+            b.arrived -> "arrived"
+            b.recentlyAnnounced -> "announced"
+            b.armed -> "armed"
+            else -> "waiting to re-arm"
+        }
+        String.format(Locale.US, "%s ~%.1f m (step %d) %.0f dBm %s", b.landmark.name, b.distanceM, b.step, b.smoothedDbm, state)
+    }
+    return "${l.status}: $beacons"
+}
+
+/** FR-APP-07: the decision log of this session, and sharing the newest one. */
+@Composable
+private fun EvaluationSection(log: DecisionLogState, onShare: () -> Unit) {
+    Text("Evaluation", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
+    val text = when {
+        log.error != null -> "Decision log: ${log.error}"
+        log.file != null -> "Decision log: ${log.file} · ${log.rows} rows"
+        else -> "Decision log: written while navigation runs (one CSV per session, newest 20 kept)"
+    }
+    Text(text, style = MaterialTheme.typography.bodyMedium, color = if (log.error != null) ErrorTextColor else Color.Unspecified)
+    OutlinedButton(onClick = onShare, modifier = Modifier.heightIn(min = MinTouch)) { Text("Share decision log") }
+}
+
+/** Sends the newest decision log with ACTION_SEND through the FileProvider (res/xml/file_paths.xml). */
+private fun shareDecisionLog(context: Context, file: File?) {
+    if (file == null || !file.isFile) {
+        Toast.makeText(context, "No decision log yet - start navigation first", Toast.LENGTH_LONG).show()
+        return
+    }
+    val uri = try {
+        FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+    } catch (e: IllegalArgumentException) {
+        Toast.makeText(context, "Cannot share ${file.name}", Toast.LENGTH_LONG).show()
+        return
+    }
+    val send = Intent(Intent.ACTION_SEND)
+        .setType("text/csv")
+        .putExtra(Intent.EXTRA_STREAM, uri)
+        .putExtra(Intent.EXTRA_SUBJECT, "CapSight ${file.name}")
+        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    send.clipData = ClipData.newRawUri(file.name, uri)
+    context.startActivity(Intent.createChooser(send, "Share decision log"))
 }
 
 /** The guidance loop's current decision (FR-NAV-01/02). */
@@ -319,7 +488,7 @@ private fun SpeechSection(sp: SpeakerState, settings: SpeechSettings, vm: AppVie
         sp.error != null -> sp.error
         else -> "Starting text-to-speech…"
     }
-    Text("Engine: $engine", style = MaterialTheme.typography.bodyMedium, color = if (sp.ttsReady) Color.Unspecified else Red)
+    Text("Engine: $engine", style = MaterialTheme.typography.bodyMedium, color = if (sp.ttsReady) Color.Unspecified else ErrorTextColor)
     Text("Output: ${sp.output}", style = MaterialTheme.typography.bodyMedium)
     Text(
         "Pending: ${sp.pending ?: "-"}   Suppressed: ${sp.lastSuppressed ?: "-"}" +
@@ -408,6 +577,7 @@ private fun sourceName(kind: SourceKind) = when (kind) {
     SourceKind.ESP32 -> "ESP32-CAM over Wi-Fi (real cap or fake camera)"
     SourceKind.PHONE_CAMERA -> "Phone camera"
     SourceKind.VIDEO_FILE -> "Video file"
+    SourceKind.NONE -> "No camera - BLE landmarks only"
 }
 
 @Composable

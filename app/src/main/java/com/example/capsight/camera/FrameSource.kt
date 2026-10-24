@@ -6,7 +6,14 @@ import android.graphics.Bitmap
  * One decoded frame, stamped by [FrameReceiver] with SystemClock.elapsedRealtime().
  * [fovDeg] is the horizontal field of view when the source knows it (phone camera), else null.
  */
-class Frame(val bitmap: Bitmap, val seq: Long, val timestampMs: Long, val fovDeg: Float? = null) {
+class Frame(
+    val bitmap: Bitmap,
+    val seq: Long,
+    val timestampMs: Long,
+    val fovDeg: Float? = null,
+    /** See [FrameSource.uprightRotationDeg]. */
+    val rotationDeg: Int? = null,
+) {
     val width: Int get() = bitmap.width
     val height: Int get() = bitmap.height
 }
@@ -22,6 +29,13 @@ interface FrameSource {
 
     /** Horizontal FOV of the frames, if the source can tell (CLAUDE.md §8.1 otherwise). */
     val horizontalFovDeg: Float? get() = null
+
+    /**
+     * How the upright frames sit on the phone, for the tilt sensor (FR-DIST-02): 0 = upright with
+     * the phone in portrait, 90 / 180 / 270 = phone turned that far counter-clockwise. Null when
+     * the camera is not the phone's own (cap camera, video file).
+     */
+    val uprightRotationDeg: Int? get() = null
 
     /**
      * Runs until the calling coroutine is cancelled. Delivers each upright frame to

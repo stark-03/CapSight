@@ -8,11 +8,13 @@ import android.graphics.Matrix
 import android.util.Size
 import android.hardware.camera2.CameraCharacteristics
 import android.util.Log
+import android.view.Surface
 import androidx.annotation.OptIn
 import androidx.camera.camera2.interop.Camera2CameraInfo
 import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.CameraInfo
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.CameraState
 import com.example.capsight.TAG
 import com.example.capsight.perception.CameraFov
 import androidx.camera.core.ImageAnalysis
@@ -39,13 +41,24 @@ import java.util.concurrent.Executors
  *
  * Owns its own lifecycle instead of borrowing an Activity's, so it works the same
  * when NavigationService runs it later (build step 7).
+ *
+ * [onUnavailable] is told (main thread) when CameraX reports a critical camera error, e.g. Android
+ * refusing camera access to an app started from the background or the lock screen (CLAUDE.md §8.2).
  */
-class PhoneCameraSource(private val context: Context) : FrameSource {
+class PhoneCameraSource(
+    private val context: Context,
+    private val onUnavailable: (String) -> Unit = {},
+) : FrameSource {
 
     override val label = "Phone camera"
 
     @Volatile
     override var horizontalFovDeg: Float? = null
+        private set
+
+    /** CameraX rotates frames upright for the display rotation at bind time (its target rotation). */
+    @Volatile
+    override var uprightRotationDeg: Int? = null
         private set
 
     /** Lens and sensor geometry, read once the camera is bound. */
@@ -80,6 +93,7 @@ class PhoneCameraSource(private val context: Context) : FrameSource {
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
             .build()
+        uprightRotationDeg = surfaceRotationDeg(analysis.targetRotation)
         var first = true
         analysis.setAnalyzer(executor) { image ->
             image.use {
@@ -104,6 +118,19 @@ class PhoneCameraSource(private val context: Context) : FrameSource {
             withContext(Dispatchers.Main) {
                 val camera = provider.bindToLifecycle(owner, CameraSelector.DEFAULT_BACK_CAMERA, analysis)
                 optics = readOptics(camera.cameraInfo)
+                // Removed with the owner. CRITICAL = CameraX will not recover on its own
+                // (camera disabled by policy / background access refused, fatal error, ...).
+                camera.cameraInfo.cameraState.observe(owner) { state ->
+                    val error = state.error ?: return@observe
+                    onStatus("Camera error ${error.code} (${state.type})")
+                    if (error.type == CameraState.ErrorType.CRITICAL) {
+                        try {
+                            onUnavailable("camera error ${error.code}")
+                        } catch (e: RuntimeException) {
+                            Log.w(TAG, "camera error callback failed", e)
+                        }
+                    }
+                }
                 owner.start()
             }
             awaitCancellation()
@@ -137,6 +164,13 @@ class PhoneCameraSource(private val context: Context) : FrameSource {
     } catch (e: RuntimeException) {
         Log.w(TAG, "could not read camera optics; using the FOV setting", e)
         null
+    }
+
+    private fun surfaceRotationDeg(rotation: Int): Int = when (rotation) {
+        Surface.ROTATION_90 -> 90
+        Surface.ROTATION_180 -> 180
+        Surface.ROTATION_270 -> 270
+        else -> 0
     }
 
     private fun rotate(bitmap: Bitmap, degrees: Int): Bitmap {

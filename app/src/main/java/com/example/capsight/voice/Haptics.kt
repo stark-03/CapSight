@@ -27,6 +27,15 @@ class Haptics(context: Context) {
     /** Two short pulses: obstacle ahead, steer. */
     fun avoid() = play(AVOID_PATTERN)
 
+    /** FR-APP-06 gesture confirmations (CLAUDE.md §8.2): two quick taps = start (volume up x2 / x3). */
+    fun gestureStart() = play(GESTURE_START_PATTERN)
+
+    /** One long pulse = stop (volume down x2). */
+    fun gestureStop() = play(GESTURE_STOP_PATTERN)
+
+    /** Three quick taps = status (volume down x3). */
+    fun gestureStatus() = play(GESTURE_STATUS_PATTERN)
+
     private fun play(pattern: LongArray) {
         val v = vibrator ?: return
         if (!v.hasVibrator()) return
@@ -46,6 +55,11 @@ class Haptics(context: Context) {
         /** off/on pairs in ms, starting with an initial delay. */
         val STOP_PATTERN = longArrayOf(0, 400, 150, 400, 150, 400)
         val AVOID_PATTERN = longArrayOf(0, 150, 100, 150)
+
+        // Gesture confirmations: shorter than the P0/P2 alerts above, so they are not mistaken for them.
+        val GESTURE_START_PATTERN = longArrayOf(0, 60, 90, 60)
+        val GESTURE_STOP_PATTERN = longArrayOf(0, 500)
+        val GESTURE_STATUS_PATTERN = longArrayOf(0, 60, 90, 60, 90, 60)
         const val NO_REPEAT = -1
     }
 }

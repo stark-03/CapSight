@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FR-APP-07: only the decision logs can be shared (DecisionLogger.DIR under filesDir). -->
+<paths>
+    <files-path
+        name="decision_logs"
+        path="decision_logs/" />
+</paths>

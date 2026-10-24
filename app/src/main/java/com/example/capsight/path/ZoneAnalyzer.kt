@@ -68,6 +68,15 @@ object ZoneAnalyzer {
         }
     }
 
+    /**
+     * Lateral offset of the middle of a side lane, + = left. Where an obstacle known only by its
+     * side (a near wall seen by the depth model, FR-PATH-03) is placed so it blocks that lane.
+     */
+    fun sideLaneCentreM(halfWidthM: Double, side: Side): Double {
+        val m = halfWidthM * (1.0 + SIDE_LANE_WIDTHS) / 2.0
+        return if (side == Side.LEFT) m else -m
+    }
+
     /** Clearance of a lane; an empty lane is clear as far as we can tell. */
     fun Zone.clearance(): Double = nearestM ?: Double.POSITIVE_INFINITY
 

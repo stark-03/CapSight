@@ -10,16 +10,17 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.capsight.ble.LandmarkConfig
 import com.example.capsight.camera.CameraContract
+import com.example.capsight.depth.DepthParams
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-
-/** Where frames come from (CLAUDE.md §1A). Stays in the debug settings in the final app. */
-enum class SourceKind { ESP32, PHONE_CAMERA, VIDEO_FILE }
+import kotlin.math.roundToInt
 
 /** Camera settings with their defaults (FR-APP-04). More settings join in step 7. */
 data class CameraSettings(
-    val source: SourceKind = SourceKind.ESP32,
+    // Phone camera by default (decided 22 Oct 2026): the phone sees, the ESP32 is a BLE landmark beacon.
+    val source: SourceKind = SourceKind.PHONE_CAMERA,
     /** Real cap: leave at the default. Fake camera: the laptop's address. */
     val cameraBaseUrl: String = CameraContract.DEFAULT_BASE_URL,
     /** Off only when the phone is the hotspot and has no Wi-Fi client network. */
@@ -86,8 +87,53 @@ data class NavigationSettings(
     val phoneFovDeg: Double = 65.0,
     /** FR-NAV-02: fixed decision rate, independent of detection speed. */
     val decisionRateHz: Int = 10,
-    /** Camera height is about this minus 10 cm (ground-plane distance, later). */
+    /** The user's height (the cap camera sits about 10 cm below it). */
     val userHeightCm: Int = 165,
+    /**
+     * FR-DIST-02: camera lens height above the floor for ground-plane distance. 1.30 m = phone
+     * worn at chest; for the cap camera it is the user's height minus about 0.1 m.
+     */
+    val cameraHeightM: Double = 1.30,
+    /** FR-OBS-04 / FR-PATH-03: monocular depth for obstacles YOLO cannot name (walls, pillars, boxes). */
+    val depthEnabled: Boolean = true,
+    /** Zone score counted as "near" (1.0 = as near as the floor just ahead). Valid 0.6-1.5. */
+    val depthThreshold: Double = DepthParams.DEFAULT_THRESHOLD,
+)
+
+/** BLE landmark beacons (CLAUDE.md §4.6). Defaults from §4.6. */
+data class LandmarkSettings(
+    val enabled: Boolean = true,
+    /** Announce when the smoothed RSSI reaches this (about 2-4 m). */
+    val announceDbm: Int = -70,
+    /** Re-arm only after it falls below this. */
+    val rearmDbm: Int = -80,
+    /** Never the same beacon twice within this. */
+    val repeatMs: Long = 60_000L,
+    /** Say the rounded distance and speak approach updates / arrival ("Room 304 door, about 2 metres."). */
+    val sayDistance: Boolean = true,
+    /** Smoothed RSSI one metre from a beacon (calibrate in the debug view). Valid -90..-20. */
+    val rssiAt1mDbm: Int = -52,
+    /** Path-loss exponent: 2 = open space, 3+ = walls / people. Valid 1.5..4.0. */
+    val pathLossExponent: Double = 2.5,
+) {
+    val config: LandmarkConfig
+        get() = LandmarkConfig(
+            announceDbm = announceDbm,
+            rearmDbm = rearmDbm,
+            repeatMs = repeatMs,
+            sayDistance = sayDistance,
+            rssiAt1mDbm = rssiAt1mDbm,
+            pathLossExponent = pathLossExponent,
+        )
+}
+
+/** Hardware-key control (FR-APP-06). */
+data class ControlSettings(
+    /**
+     * Volume-key gestures (CLAUDE.md §8.2): up x2 start without camera, up x3 with camera, down x2 stop,
+     * down x3 status - also from standby with the screen off. Single presses still change the volume.
+     */
+    val volumeButtonControl: Boolean = true,
 )
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
@@ -98,8 +144,7 @@ class AppSettings(context: Context) {
     val camera: Flow<CameraSettings> = store.data.map { p ->
         val defaults = CameraSettings()
         CameraSettings(
-            source = p[SOURCE]?.let { name -> SourceKind.entries.firstOrNull { it.name == name } }
-                ?: defaults.source,
+            source = SourceKind.fromStored(p[SOURCE], defaults.source),
             cameraBaseUrl = p[BASE_URL] ?: defaults.cameraBaseUrl,
             bindToWifi = p[BIND_WIFI] ?: defaults.bindToWifi,
             videoUri = p[VIDEO_URI],
@@ -143,13 +188,39 @@ class AppSettings(context: Context) {
             capFovDeg = p[CAP_FOV_DEG]?.toDouble() ?: d.capFovDeg,
             phoneFovDeg = p[PHONE_FOV_DEG]?.toDouble() ?: d.phoneFovDeg,
             userHeightCm = p[USER_HEIGHT_CM] ?: d.userHeightCm,
+            cameraHeightM = p[CAMERA_HEIGHT_M]?.toDouble() ?: d.cameraHeightM,
+            depthEnabled = p[DEPTH_ENABLED] ?: d.depthEnabled,
+            depthThreshold = p[DEPTH_THRESHOLD]?.toDouble() ?: d.depthThreshold,
         )
+    }
+
+    val landmarks: Flow<LandmarkSettings> = store.data.map { p ->
+        val d = LandmarkSettings()
+        LandmarkSettings(
+            enabled = p[LANDMARKS_ENABLED] ?: d.enabled,
+            announceDbm = p[LANDMARK_ANNOUNCE_DBM] ?: d.announceDbm,
+            rearmDbm = p[LANDMARK_REARM_DBM] ?: d.rearmDbm,
+            repeatMs = p[LANDMARK_REPEAT_MS] ?: d.repeatMs,
+            sayDistance = p[LANDMARK_SAY_DISTANCE] ?: d.sayDistance,
+            rssiAt1mDbm = p[LANDMARK_RSSI_1M_DBM] ?: d.rssiAt1mDbm,
+            pathLossExponent = p[LANDMARK_PATH_LOSS]?.toDouble() ?: d.pathLossExponent,
+        )
+    }
+
+    val controls: Flow<ControlSettings> = store.data.map { p ->
+        val d = ControlSettings()
+        ControlSettings(volumeButtonControl = p[VOLUME_BUTTON_CONTROL] ?: d.volumeButtonControl)
     }
 
     /** NFR-SAFE-01: the user has seen the safety statement on first run. */
     val safetyAccepted: Flow<Boolean> = store.data.map { it[SAFETY_ACCEPTED] ?: false }
 
     suspend fun acceptSafety() = store.edit { it[SAFETY_ACCEPTED] = true }
+
+    /** The spoken welcome (volume gestures, camera optional) was shown once after the safety statement. */
+    val welcomeShown: Flow<Boolean> = store.data.map { it[WELCOME_SHOWN] ?: false }
+
+    suspend fun markWelcomeShown() = store.edit { it[WELCOME_SHOWN] = true }
 
     /** Saves a validated Settings-screen draft (FR-APP-04). Returns the problems if it is invalid. */
     suspend fun saveHelperSettings(d: HelperSettingsDraft): Map<String, String> {
@@ -160,12 +231,23 @@ class AppSettings(context: Context) {
             it[BASE_URL] = d.cameraBaseUrl.trim()
             it[CAP_FOV_DEG] = num(d.capFovDeg).toFloat()
             it[USER_HEIGHT_CM] = num(d.userHeightCm).toInt()
+            it[CAMERA_HEIGHT_M] = num(d.cameraHeightM).toFloat()
             it[STOP_DISTANCE_M] = num(d.stopDistanceM).toFloat()
             it[WARN_DISTANCE_M] = num(d.warnDistanceM).toFloat()
             it[PHRASE_COOLDOWN_MS] = (num(d.phraseCooldownS) * MS_PER_S).toLong()
             it[CLEAR_REPEAT_MS] = (num(d.clearRepeatS) * MS_PER_S).toLong()
             it[SPEECH_RATE] = d.speechRate
             it[SPEECH_VOLUME] = d.speechVolume.coerceIn(0f, 1f)
+            it[LANDMARKS_ENABLED] = d.landmarksEnabled
+            it[LANDMARK_ANNOUNCE_DBM] = num(d.landmarkAnnounceDbm).toInt()
+            it[LANDMARK_REARM_DBM] = num(d.landmarkRearmDbm).toInt()
+            it[LANDMARK_REPEAT_MS] = (num(d.landmarkRepeatS) * MS_PER_S).toLong()
+            it[LANDMARK_SAY_DISTANCE] = d.landmarkSayDistance
+            it[LANDMARK_RSSI_1M_DBM] = num(d.landmarkRssiAt1mDbm).roundToInt()
+            it[LANDMARK_PATH_LOSS] = num(d.landmarkPathLoss).toFloat()
+            it[VOLUME_BUTTON_CONTROL] = d.volumeButtonControl
+            it[DEPTH_ENABLED] = d.depthEnabled
+            it[DEPTH_THRESHOLD] = num(d.depthThreshold).toFloat()
         }
         return emptyMap()
     }
@@ -178,13 +260,16 @@ class AppSettings(context: Context) {
 
     suspend fun setShowAllClasses(show: Boolean) = store.edit { it[SHOW_ALL_CLASSES] = show }
 
-    suspend fun setSource(kind: SourceKind) = store.edit { it[SOURCE] = kind.name }
+    suspend fun setSource(kind: SourceKind) = store.edit { it[SOURCE] = kind.storedName }
 
     suspend fun setCameraBaseUrl(url: String) = store.edit { it[BASE_URL] = url.trim() }
 
     suspend fun setBindToWifi(bind: Boolean) = store.edit { it[BIND_WIFI] = bind }
 
     suspend fun setVideoUri(uri: String) = store.edit { it[VIDEO_URI] = uri }
+
+    /** "Calibrate at 1 m" in the debug view: the beacon signal at 1 m, already validated. */
+    suspend fun setLandmarkRssiAt1m(dbm: Int) = store.edit { it[LANDMARK_RSSI_1M_DBM] = dbm }
 
     private companion object {
         val SOURCE = stringPreferencesKey("camera_source")
@@ -197,6 +282,7 @@ class AppSettings(context: Context) {
         val SHOW_ALL_CLASSES = booleanPreferencesKey("det_show_all_classes")
         val SPEECH_RATE = floatPreferencesKey("speech_rate")
         val SAFETY_ACCEPTED = booleanPreferencesKey("safety_accepted")
+        val WELCOME_SHOWN = booleanPreferencesKey("welcome_shown")
         const val MS_PER_S = 1_000.0
         val STOP_DISTANCE_M = floatPreferencesKey("nav_stop_distance_m")
         val WARN_DISTANCE_M = floatPreferencesKey("nav_warn_distance_m")
@@ -209,11 +295,22 @@ class AppSettings(context: Context) {
         val CAP_FOV_DEG = floatPreferencesKey("nav_cap_fov_deg")
         val PHONE_FOV_DEG = floatPreferencesKey("nav_phone_fov_deg")
         val USER_HEIGHT_CM = intPreferencesKey("nav_user_height_cm")
+        val CAMERA_HEIGHT_M = floatPreferencesKey("nav_camera_height_m")
         val SPEECH_VOLUME = floatPreferencesKey("speech_volume")
         val PHRASE_COOLDOWN_MS = longPreferencesKey("speech_phrase_cooldown_ms")
         val STOP_COOLDOWN_MS = longPreferencesKey("speech_stop_cooldown_ms")
         val CLEAR_REPEAT_MS = longPreferencesKey("speech_clear_repeat_ms")
         val STAIRS_COOLDOWN_MS = longPreferencesKey("speech_stairs_cooldown_ms")
         val SPEAK_GUIDANCE = booleanPreferencesKey("speech_speak_guidance")
+        val LANDMARKS_ENABLED = booleanPreferencesKey("ble_landmarks_enabled")
+        val LANDMARK_ANNOUNCE_DBM = intPreferencesKey("ble_announce_dbm")
+        val LANDMARK_REARM_DBM = intPreferencesKey("ble_rearm_dbm")
+        val LANDMARK_REPEAT_MS = longPreferencesKey("ble_repeat_ms")
+        val LANDMARK_SAY_DISTANCE = booleanPreferencesKey("ble_say_distance")
+        val LANDMARK_RSSI_1M_DBM = intPreferencesKey("ble_rssi_1m_dbm")
+        val LANDMARK_PATH_LOSS = floatPreferencesKey("ble_path_loss_exponent")
+        val VOLUME_BUTTON_CONTROL = booleanPreferencesKey("control_volume_button")
+        val DEPTH_ENABLED = booleanPreferencesKey("nav_depth_enabled")
+        val DEPTH_THRESHOLD = floatPreferencesKey("nav_depth_threshold")
     }
 }

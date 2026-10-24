@@ -29,6 +29,8 @@ data class PerceivedView(
     val frameHeight: Int = 0,
     val fovDeg: Double = 0.0,
     val fovSource: String = "",
+    /** FR-DIST-02/03: camera pitch/roll and whether the ground-plane distance is in use. */
+    val tilt: String = "",
     /** FR-PATH-01 lanes and the side the zones favour (no hysteresis here; that is step 6). */
     val zones: Zones? = null,
     val bestSide: Side? = null,
@@ -62,12 +64,27 @@ private fun classColour(classId: Int) = when (classId) {
     else -> OtherColour
 }
 
-/** "chair 0.82 2.1 m" - the distance only when perception could measure one. */
+/**
+ * "chair 0.82 2.1 m" - the distance only when perception could measure one; "#3 2.1 m (raw 1.9)"
+ * when it was smoothed over time (FR-DIST-04).
+ */
 fun objectLabel(p: PerceivedObject): String {
     val d = p.detection
-    val dist = p.relative?.let { String.format(Locale.US, " %.1f m", it.forwardM) }.orEmpty()
+    val dist = p.relative?.let { r ->
+        val raw = p.rawForwardM
+        val track = p.trackId?.let { "#$it " }.orEmpty()
+        val source = p.distanceSource?.let { " ${it.label}" }.orEmpty()
+        if (raw != null && kotlin.math.abs(raw - r.forwardM) >= RAW_SHOWN_FROM_M) {
+            String.format(Locale.US, " %s%.1f m (raw %.1f)%s", track, r.forwardM, raw, source)
+        } else {
+            String.format(Locale.US, " %s%.1f m%s", track, r.forwardM, source)
+        }
+    }.orEmpty()
     return "${d.label} ${String.format(Locale.US, "%.2f", d.score)}$dist"
 }
+
+/** Show the unsmoothed distance only when it differs visibly. */
+private const val RAW_SHOWN_FROM_M = 0.05
 
 /**
  * Boxes over the frame (FR-APP-05). Red: in the corridor within the stop distance; orange: in the

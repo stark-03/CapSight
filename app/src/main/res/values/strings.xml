@@ -1,9 +1,43 @@
 <resources>
+    <!-- Launcher label; TalkBack reads it when the user finds the app. -->
     <string name="app_name">Cap Sight</string>
+
+    <!-- Notifications (read by TalkBack from the notification shade) -->
     <string name="notification_channel">Navigation guidance</string>
-    <string name="notification_title">CapSight guidance is on</string>
-    <string name="notification_text">Speaking obstacle warnings. Tap to open.</string>
-    <string name="notification_stop">Stop</string>
+    <string name="notification_title">CapSight is guiding you</string>
+    <string name="notification_text">Volume down twice to stop, three times to hear the status. Tap to open CapSight.</string>
+    <string name="notification_text_no_keys">Speaking warnings and landmarks. Tap Stop navigation to end, or tap here to open CapSight.</string>
+    <string name="notification_stop">Stop navigation</string>
+    <!-- Ends navigation AND the volume-key standby (CLAUDE.md §8.2) -->
+    <string name="notification_exit">Exit CapSight</string>
+    <string name="notification_standby_title">CapSight ready. Volume up twice to start.</string>
+    <string name="notification_standby_text">Volume up 3 times starts with the camera. Exit CapSight turns the volume-button start off.</string>
+
     <!-- NFR-SAFE-01: must appear on first run and in About -->
     <string name="safety_statement">CapSight supplements the white cane. It does not replace it. Keep using your cane at all times.</string>
+    <string name="safety_title">Before you start</string>
+    <string name="safety_limits">CapSight warns about objects it recognises and announces beacons at doors, stairs and rooms. It cannot see every hazard: glass, holes, kerbs and walls may be missed. Stop and check with your cane whenever you are unsure.</string>
+    <string name="safety_accept">I understand</string>
+
+    <!-- Main screen (blind user first) -->
+    <string name="start_with_camera">Start with camera</string>
+    <string name="start_with_camera_detail">Obstacle warnings and landmarks</string>
+    <string name="start_without_camera">Start without camera</string>
+    <string name="start_without_camera_detail">Landmarks only</string>
+    <string name="stop_navigation">Stop navigation</string>
+    <string name="switch_to_camera">Use the camera too</string>
+    <string name="help">Help</string>
+    <string name="help_description">Help: hear how to use CapSight</string>
+    <string name="repeat_status">Repeat status</string>
+    <string name="repeat_status_description">Repeat status: hear the mode and the nearest landmark</string>
+    <string name="helper_settings">Helper settings</string>
+    <string name="helper_settings_description">Helper settings, for a sighted helper: settings and debug view</string>
+    <string name="last_said">Last said: %1$s</string>
+    <string name="last_landmark">Last landmark: %1$s</string>
+
+    <!-- Welcome / help -->
+    <string name="welcome_title">Welcome to CapSight</string>
+    <string name="help_title">How to use CapSight</string>
+    <string name="hear_again">Hear again</string>
+    <string name="got_it">Got it</string>
 </resources>

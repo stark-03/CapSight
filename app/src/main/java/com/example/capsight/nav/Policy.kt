@@ -23,6 +23,12 @@ data class GuidanceInput(
     val perceptionReady: Boolean = true,
     /** Side chosen with hysteresis (SideChooser); null lets the policy pick from the zones. */
     val steerSide: Side? = null,
+    /**
+     * Landmarks-only mode (no camera by choice, CLAUDE.md §5.1): there is no vision to decide from,
+     * so the policy stays silent - no "Camera disconnected", no obstacles, no "Path clear.".
+     * BLE landmarks are spoken outside the policy and are not affected.
+     */
+    val cameraOff: Boolean = false,
 )
 
 /** Policy thresholds; defaults match CLAUDE.md §8 and live in settings (FR-NAV-03). */
@@ -52,6 +58,10 @@ data class Decision(val priority: Int, val message: String, val reason: String, 
 object Policy {
 
     fun decide(inp: GuidanceInput, cfg: DecisionConfig): Decision {
+        // ---- No camera by choice: nothing to say (the camera-mode fail-safes below do not apply) ----
+        if (inp.cameraOff) {
+            return Decision(Priority.IDLE, "", CAMERA_OFF_REASON, cfg.phraseCooldownMs)
+        }
         // ---- P0: the camera is gone - the user is walking blind ----
         if (inp.cameraLost) {
             return Decision(Priority.STOP, Phrases.CAMERA_LOST, "no frame for 2 s", cfg.stopCooldownMs)
@@ -104,6 +114,8 @@ object Policy {
         // ---- P4: all clear ----
         return Decision(Priority.CLEAR, Phrases.PATH_CLEAR, "path clear", cfg.clearRepeatMs)
     }
+
+    const val CAMERA_OFF_REASON = "camera off - landmarks only"
 
     private fun m(v: Double) = String.format(Locale.US, "%.1f m", v)
 }

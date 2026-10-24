@@ -5,6 +5,8 @@
 -->
 <data-extraction-rules>
     <cloud-backup>
+        <!-- Decision logs stay on the phone (CLAUDE.md §10, Privacy). -->
+        <exclude domain="file" path="decision_logs/" />
         <!-- TODO: Use <include> and <exclude> to control what is backed up.
         <include .../>
         <exclude .../>
