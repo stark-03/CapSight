@@ -21,8 +21,10 @@ Read this whole file before changing code. When a request conflicts with it, ask
 | Minimum Android | **Android 7.0 Nougat, API 24** (`minSdk = 24`). | User decision for ~99% device reach. **Supersedes the SRS, which says API 29.** See §6 for what this costs. |
 | Target Android | **`targetSdk = 36`** (compileSdk stays 37). Do NOT raise to 37. | Android 17 blocks LAN access for apps targeting SDK 37 unless they hold the runtime `ACCESS_LOCAL_NETWORK` permission (NEARBY_DEVICES group); without it every connection to 192.168.4.1 silently times out. Found 14 Oct 2026 on the Pixel 9a (Android 17): shell user reached the ESP32, app user timed out; targetSdk 36 fixed it. Raising to 37 later requires declaring + requesting that permission first. |
 | Camera hardware | **AI-Thinker-style ESP32-CAM (ESP-32S module) with an OV3660 sensor**, confirmed from the user's photos (2 Oct 2026): pin headers already soldered, PSRAM chip present (so firmware runs 640×480), camera ribbon not yet attached. No MB programmer yet. | Firmware already exists and works (§4); its OV3660 vflip fix applies. XIAO ESP32S3 Sense is the fallback board only. |
-| BLE / ceiling camera | **Removed.** | The old Phase-2 design. Kept only as reference code (§9). |
-| Distance method | Apparent object size (ported from `egocentric.py`), later fused with ground-plane geometry once the IMU exists. | Works with no calibration rig; proven in Phase 2. |
+| Ceiling camera / BLE user-identification | **Removed.** | The old Phase-2 design. Kept only as reference code (§9). |
+| BLE | **Kept, as BLE landmark beacons** (decided 18 Oct 2026: the guide requires BLE). ESP32 boards at doors/stairs/rooms advertise `CS:<TYPE>:<label>`; the phone scans and speaks "Room 304 door nearby". Contract §4.6. | Gives the project its BLE part with a real job the camera cannot do (naming places). BLE never carries video (far too slow); video stays on Wi-Fi. |
+| Distance method | Apparent object size (ported from `egocentric.py`), fused with ground-plane geometry (camera height + tilt; nearer estimate wins, FR-DIST-03) where a tilt sensor exists: the phone's own sensor in PHONE_CAMERA mode (22 Oct 2026); the cap only once `/imu` exists. Distances are smoothed per object over time (FR-DIST-04). | Works with no calibration rig; proven in Phase 2. |
+| Camera is optional | **Landmarks-only mode** (decided 23 Oct 2026, user requirement): using the camera is the user's choice. `SourceKind.NONE` ("No camera - BLE landmarks only") runs BLE landmarks without any camera, and a refused camera permission falls back to it for that session. Details §5.1. | BLE landmarks must keep working when the user does not allow / turn on the camera. |
 | Names | **Keep as generated.** Package/applicationId `com.example.capsight`, project name "Cap Sight", hotspot `BLENAV_CAM`. Do not rename. | The app will not be published on the Play Store, so `com.example` is acceptable. User decision. |
 
 Open decisions — **ask the user before acting on these**: none right now.
@@ -222,7 +224,9 @@ in the same commit and update the table in §4.4.
 Planned v2 additions (firmware work, SRS FR-CAM-04/05/06). The app must feature-detect
 them (404 or timeout → feature off) and keep working against v1:
 - `GET http://192.168.4.1/status` → `{"fw":"2.0","sensor":"OV3660","frame":"VGA","uptime_s":123,"heap":45000}`
-- `GET http://192.168.4.1/imu` → `{"pitch_deg":-28.5,"roll_deg":1.2,"t_ms":123456}` (negative pitch = looking down)
+- `GET http://192.168.4.1/imu` → `{"pitch_deg":-28.5,"roll_deg":1.2,"t_ms":123456}` (negative pitch = looking down).
+  NOTE: the app's `perception/CameraTilt.Tilt.pitchDownDeg` is the opposite sign (positive = looking
+  down), so an `/imu` reader must pass `pitchDownDeg = -pitch_deg`.
 - MPU6050 wiring (from the build guide): VCC→3V3, GND→GND, **SCL→IO14, SDA→IO15**, so in firmware `Wire.begin(15, 14)`. No SD card may be inserted (IO14/15 are shared with it).
 - While editing firmware for the cap: set `ae_level` to 0 (the +1 bias was for a ceiling mount), and update the header comment from "ceiling camera" to "cap camera".
 
@@ -230,6 +234,59 @@ them (404 or timeout → feature off) and keep working against v1:
 Arduino IDE 2.x, board package "esp32 by Espressif Systems", Board **AI Thinker ESP32-CAM**,
 Partition **Huge APP (3MB No OTA)**, 115200 baud, via the ESP32-CAM-MB programmer. Full steps
 with pictures: `docs/Hardware_Build_Guide.pdf`, step 2.
+
+### 4.6 BLE landmarks v1 (`firmware/ble_landmark/ble_landmark.ino`)
+- **Hardware:** any plain ESP32 (the team's spare ESP32 Dev Module from Phase 2), USB-powered,
+  placed at the landmark. Flash with Board **ESP32 Dev Module**. One beacon per landmark.
+- **Advertisement:** legacy advertising every 100 ms at +9 dBm, scannable. **Advertising packet:**
+  flags 0x06 + complete 128-bit service UUID **`6c616e64-6d61-726b-4353-000000000001`**
+  (`Landmark.SERVICE_UUID` in the app; the app's scan filters on it so it keeps working with the
+  screen off). **Scan response:** Complete Local Name `CS:<TYPE>:<LABEL>`, max 26 characters.
+  `TYPE` ∈ `DOOR, STAIRS, LIFT, WASHROOM, EXIT, ROOM, OTHER`; `LABEL` free text, may be empty.
+  Unknown TYPE → treat as `OTHER`. Names not starting with `CS:` are ignored.
+- **Spoken phrases** (app side, short and fixed):
+
+  | TYPE | with label | without label | priority |
+  |---|---|---|---|
+  | DOOR | "{label} door nearby." | "Door nearby." | info |
+  | STAIRS | "Caution. Stairs nearby." | same | **P1** (fall risk, same level as detected stairs) |
+  | LIFT / WASHROOM / EXIT | "{Type} nearby." (+ ", {label}" if set) | "{Type} nearby." | info |
+  | ROOM / OTHER | "{label} nearby." | (ignored) | info |
+- **Proximity (app):** RSSI smoothed per beacon (median of readings in the last 3 s). Announce when
+  smoothed RSSI ≥ **-70 dBm** (about 2-4 m, tune on site); re-arm only after it falls below
+  **-80 dBm** or the beacon is unseen for 10 s (hysteresis); never the same beacon twice within
+  **60 s**. Info announcements never interrupt or replace P0-P2 speech; STAIRS uses P1.
+  Thresholds are settings like everything else (§8).
+- **Distance (app, 23 Oct 2026; `ble/BeaconDistance.kt`, pure):** log-distance path loss on the smoothed
+  RSSI, d = 10^((rssiAt1m - rssi) / (10·n)), clamped to 0.3-30 m. Settings ("BLE landmarks" section):
+  "Say distance to beacons" **on**, "Beacon signal at 1 m" **-52 dBm** (valid -90..-20), path-loss
+  exponent **2.5** (valid 1.5..4.0; 2 = open space, 3+ = walls/people). Spoken only as steps 1, 2, 3, 5,
+  8, 10, 15, 20 m (<1.5→1, <2.5→2, <4→3, <6.5→5, <9→8, <12.5→10, <17.5→15, else 20); a new step must
+  stay on the same side (nearer / farther) for 1.5 s before it counts (`StepFilter`).
+  Phrases: first announcement = the table phrase + ", about N metres." ("Room 304 door nearby, about
+  4 metres.", "Caution. Stairs nearby, about 3 metres."; "1 metre" singular). Until the beacon re-arms:
+  an update only when the step DROPS below the last spoken one, at most every 4 s per beacon ("Room
+  304 door, about 2 metres." / "Caution. Stairs, about 2 metres."); at step 1 once "Room 304 door, you
+  are here." / "Caution. Stairs right in front of you." / "{label}, you are here." (not said if the
+  first announcement was already "about 1 metre"); then silent until re-arm. Moving away never speaks.
+  Same priority as the type (STAIRS P1, rest INFO), same Speaker path; a refused update is retried on
+  the next reading; every accepted one is a `landmark` row in the decision log (reason has kind, metres,
+  step, dBm). Setting off = exactly the original behaviour. **Calibration:** debug view "Calibrate at 1 m"
+  - hold the phone 1 m from a beacon, tap; the strongest beacon's smoothed RSSI (rounded) is saved as
+  "Beacon signal at 1 m" ("Calibrated: -51 dBm at 1 m"; no beacon heard → nothing saved).
+  **Accuracy, honestly:** approximate - about ±1 m at 1-3 m, much worse farther or through bodies and
+  walls (the user's own body can cost 10 dB ≈ 2.5× the distance); RSSI gives no direction.
+- **App implementation notes** (build step 8, 18 Oct 2026): `ble/Landmark.kt` + `ble/LandmarkTracker.kt`
+  are pure and JVM-tested; `ble/LandmarkScanner.kt` runs inside `Pipeline.run()` (so inside
+  `NavigationService`). Beacons are tracked by Bluetooth address, not name. Info landmarks use the
+  existing `Priority.INFO` (5): they never replace anything pending, but a P1/P2 that arrives while a
+  landmark phrase is already playing waits for it to finish (~1.5 s; only P0 interrupts). A landmark
+  counts as announced only when `Speaker.say` accepts it; it can still be displaced from the slot
+  later by a more urgent phrase, and is then not repeated for 60 s.
+- **Screen off (18 Oct 2026):** the scan is filtered on the service UUID above, because Android
+  8.1+ pauses unfiltered scans while the screen is off. The name is read from the scan response
+  (Android scans actively). Still to verify on the phone in Phase C: landmarks announced with the
+  screen off.
 
 ---
 
@@ -240,20 +297,31 @@ Pipeline (SRS §3): **receive → detect → obstacles + distance → path → d
 Package plan (sub-packages of `com.example.capsight`):
 ```
 camera/      M2  FrameSource interface; MjpegFrameSource (ESP32); PhoneCameraSource and
-                 VideoFileSource for testing without the cap; CameraNetwork (Wi-Fi binding)
+                 VideoFileSource for testing without the cap; CameraNetwork (Wi-Fi binding);
+                 PhoneTiltSensor (gravity sensor for ground-plane distance, phone camera only)
 detect/      M3  YoloDetector (LiteRT), Letterbox, Nms, CocoLabels
 perception/  M4,M5  Obstacle filtering, size-based distance (port of egocentric.py),
-                 relative geometry (port of world.py helpers)
+                 relative geometry (port of world.py helpers); DistanceTracker + SmoothedPerception
+                 (per-object smoothing, FR-DIST-04); CameraTilt (gravity -> pitch/roll) and
+                 GroundPlane (floor distance + fusion, FR-DIST-02/03)
 path/        M6  ZoneAnalyzer: left / centre / right clearance
+depth/       M4,M6  FR-OBS-04 / FR-PATH-03 monocular depth (§7.4): DepthScorer + DepthRule (pure);
+                 MidasDepth (LiteRT) + DepthRunner (own thread, ~4 Hz) (Android)
 nav/         M7  decide() pure policy + GuidanceLoop (10 Hz ticker)
 voice/       M8  Speaker (single pending slot, priority, cooldown), Haptics
 service/         NavigationService — foreground service that owns the whole pipeline
 settings/        AppSettings (DataStore) with the defaults in §8
-ui/          M9  Compose screens: Main (Start/Stop), Settings, Debug overlay
+ble/             BLE landmarks (§4.6): Landmark + LandmarkTracker (pure), LandmarkScanner (Android)
+control/         FR-APP-06 volume-key gestures: MultiPressDetector + GestureRules (pure); VolumeGesture +
+                 VolumeKeySession (Android, MediaSession owned by NavigationService); service/GestureControl
+                 carries a gesture out (§8.2)
+record/          FR-APP-07 decision log: DecisionCsv (pure CSV/ISO time/pruning), DecisionLogger (Android, IO)
+ui/          M9  Compose screens (§5.2): blind-first Main, safety statement + spoken welcome / Help,
+                 helper area (Settings -> Debug view); theme/ = always-dark high-contrast palette
 ```
 
 Rules:
-- `detect/` post-processing, `perception/`, `path/`, `nav/` are **pure Kotlin**: no `android.*`
+- `detect/` post-processing, `perception/`, `path/`, `nav/`, `depth/DepthScorer` + `depth/DepthRule`, `control/MultiPressDetector` + `control/GestureRules`, `record/DecisionCsv`, and `ble/` except `LandmarkScanner` are **pure Kotlin**: no `android.*`
   imports, no clocks (pass time in), no threads. They are JVM-unit-tested like the Python originals.
 - The pipeline lives in `NavigationService`, **not** in an Activity or ViewModel, so it keeps
   running with the screen off. The UI only observes `StateFlow`s from the service.
@@ -262,6 +330,57 @@ Rules:
   dispatcher (the interpreter is not thread-safe); the 10 Hz decision ticker on its own coroutine.
 - Use `SystemClock.elapsedRealtime()` for timing, not wall-clock time.
 - Fail safe (FR-NAV-05): any exception in a tick → say "Stop" and log it. Never go silent while running.
+
+### 5.1 Landmarks-only mode (no camera, 23 Oct 2026)
+- `SourceKind.NONE` (stored as `"NONE"`; unknown stored values fall back to PHONE_CAMERA). Chosen with the
+  "Use a camera" switch in Settings (off = NONE, on = phone camera, saved at once) or the debug view's source picker.
+- Pipeline in this mode: **no** frame receiver, YOLO, depth, tilt sensor, camera-link monitoring or
+  "Connecting to camera"; BLE scanner, speaker, decision log and volume keys still run. The guidance loop
+  ticks with `cameraOff` = `Policy` returns a silent IDLE decision: never "Camera disconnected", "Stop.",
+  obstacle, stairs or "Path clear." (the camera-mode fail-safes are unchanged). Landmark phrases keep
+  their priorities (STAIRS P1, rest INFO) and cooldowns. Start phrase: "Navigation started without camera.
+  To use the camera, press volume up three times." (volume-button control off: "Navigation started. Camera
+  off, landmarks only."). Main screen: "Navigating without camera - landmarks only" (+ "Camera not available, so
+  landmarks only." on a fallback) and the BLE scanner status ("Landmarks: permission denied." explains silence);
+  debug banner: "Landmarks only - camera off" (+ "(camera not available)").
+- Service: connectedDevice type only, no Wi-Fi lock. The mode is fixed for the session by the start intent
+  (volume up x3 restarts the session with the camera, §8.2; a verified camera session that cannot open the
+  phone camera switches itself to this mode).
+- **Effective mode** (`settings/StartPlan.decide`, pure + tested): PHONE_CAMERA + camera permission -> PHONE_CAMERA;
+  PHONE_CAMERA without it -> NONE for this session only (saved source unchanged, next Start asks again) +
+  toast; ESP32 / VIDEO_FILE -> unchanged; NONE -> NONE. No camera **and** BLE landmarks off -> does not start:
+  toast "Camera is off and BLE landmarks are switched off - nothing to guide with" + spoken
+  "Camera off and landmarks off. Nothing to guide with." BLE permission refused -> still starts (landmarks silent, reason shown).
+- Volume-key starts (§8.2): volume up x2 = landmarks only (`StartWish.NO_CAMERA`), volume up x3 = with a camera
+  (`StartWish.CAMERA`: the selected camera source, or the phone camera when "No camera" is selected; saved source
+  unchanged). With CapSight on screen a missing permission opens the normal start flow (dialogs) for that wish;
+  off screen no dialog ever opens: a missing camera permission starts landmarks only with "Camera is not
+  available...", a missing BLE permission is spoken after the start phrase.
+
+### 5.2 User interface (blind user first, sighted helper second; 24 Oct 2026)
+- **First run** (`ui/AppStage`, pure): safety statement (NFR-SAFE-01, also spoken: `Phrases.SAFETY_INTRO`, big
+  "I understand" at the bottom) -> spoken welcome once (`Phrases.help`: what CapSight does, keep the cane, the four
+  volume gestures - or that they are off -, camera optional, screen layout; saved as `welcome_shown`) with "Hear
+  again" / "Got it" -> main screen. Help on the main screen replays the same screen. Lines are spoken one at a time
+  at INFO priority, each only when the speaker is free (`AppViewModel.readHelp`), so warnings still get through.
+- **Main screen** (`MainScreen`, status text from `ui/MainStatus`, pure): status area first (mode in plain words
+  "Stopped" / "Navigating with camera" / "Navigating without camera - landmarks only" = heading + polite live
+  region; one detail line; "Last said: ..." not live, the app already speaks it). Stopped: two huge buttons "Start
+  with camera" (yellow) above "Start without camera" (outlined); running: one huge "Stop navigation" (~45% of the
+  height; plus "Use the camera too" while landmarks only); then "Help" and "Repeat status"; at the bottom a small
+  "Helper settings". Buttons do exactly what the gestures do: start = `rememberNavigationStarter` with
+  `StartWish.CAMERA` / `NO_CAMERA` (same StartPlan, permission dialogs and start phrases as volume up x3 / x2),
+  stop = `NavigationService.stop`, Repeat status = `GestureControl.repeatStatus` (the volume down x3 reply); same
+  vibrations (`Haptics.gesture*`). They never speak their own label (TalkBack already does). No keep-screen-on:
+  guidance runs with the screen off; only the debug view keeps the screen on while running.
+- **Helper area:** Settings (sections Camera and obstacle warnings, BLE landmarks + calibration, Voice, Volume
+  buttons, Advanced, Phone setup, About; Save fixed at the bottom) -> Debug view. Back from Debug returns to Settings.
+- **Rules for every screen:** colours only from `ui/theme/Palette` (always dark, no dynamic colour; text >= 7:1,
+  control edges >= 3:1, checked by `PaletteTest`); all text in sp, never a fixed height that clips text (use
+  `heightIn(min = ...)` and a scrolling column, check at font scale 2.0); controls the blind user touches >= 72 dp
+  (`UserTouchMin`), helper controls >= 48 dp; every control has a text label or contentDescription; headings
+  marked `heading()`; status that changes on its own is a polite live region, but never text the app already
+  speaks; meaning never by colour alone. Spoken words live in `voice/Phrases.kt`, screen labels in `strings.xml`.
 
 ---
 
@@ -284,11 +403,33 @@ CAMERA                                      (runtime; PhoneCameraSource test sou
   (API 30+, permission `FOREGROUND_SERVICE_CAMERA`) only when the phone-camera source is selected
   and the CAMERA permission is granted, so the phone camera also works with the screen off. Camera
   type can only start while the app is in the foreground; a system restart falls back to
-  connectedDevice only. The service also holds a partial wake lock and a low-latency Wi-Fi lock.
+  connectedDevice only. The service also holds a partial wake lock and a low-latency Wi-Fi lock while navigating.
+  **Volume-key standby (24 Oct 2026, §8.2)** uses the same service with type connectedDevice only (no new
+  type, no wake lock or Wi-Fi lock). When the service is already in the foreground, a second
+  `startForeground` (e.g. adding the camera type from standby while the phone is locked) can be refused on
+  API 31+/34+: the service then keeps its current type and the camera start falls back to landmarks only.
+  A small private SharedPreferences file (`navigation_service`) records navigating / standby so a system
+  restart (START_STICKY, null intent) resumes the right state.
 - TTS on API 30+ needs package visibility, or the engine is invisible:
   `<queries><intent><action android:name="android.intent.action.TTS_SERVICE"/></intent></queries>`
-- Do **not** request location permission. We never read the SSID; we identify the camera with
-  the HTTP health probe (§4.1).
+- The camera link needs **no** location permission: we never read the SSID; the HTTP health
+  probe identifies the camera (§4.1).
+- **Decision log sharing (FR-APP-07):** `androidx.core.content.FileProvider`, authority
+  `${applicationId}.fileprovider`, paths `res/xml/file_paths.xml` (only `files/decision_logs/`).
+  No storage permission.
+- **BLE landmarks (§4.6) need scan permissions** (added 18 Oct 2026):
+  `BLUETOOTH` + `BLUETOOTH_ADMIN` (`maxSdkVersion="30"`), **`ACCESS_FINE_LOCATION` +
+  `ACCESS_COARSE_LOCATION` on every API level** (runtime; precise location must be granted and
+  Location services must be ON), and `BLUETOOTH_SCAN` (API 31+, runtime). Do **not** set
+  `neverForLocation` on BLUETOOTH_SCAN: it makes Android filter out beacon advertisements. But
+  without it, **Android 12+ delivers zero scan results unless the app also holds fine location**:
+  measured 23 Oct 2026 on the Pixel 9a (Android 17) - scan ran, 0 results from any device;
+  after granting fine location, 91 results and "Room 304 door nearby." at -42 dBm within 0.3 s.
+  `LandmarkScanner.scanPermissions` / `hasScanPermission` encode this; the start flow requests them
+  together. Declare
+  `<uses-feature android:name="android.hardware.bluetooth_le" android:required="false"/>`.
+  If permission is denied or Bluetooth is off, landmarks are silently disabled and say so in the
+  debug view; navigation itself keeps working.
 
 ### 6.2 Cleartext HTTP
 `res/xml/network_security_config.xml` permitting cleartext **only** for `192.168.4.1`, referenced
@@ -368,6 +509,30 @@ Known gap: the SRS (FR-DET-02) also lists **door, pole/sign and stairs**. These 
 classes**; standard YOLOv8n cannot detect them. They need a fine-tuned model (stairs is
 FR-DET-04, "Should"). Do not claim them as working.
 
+### 7.4 Depth model (FR-OBS-04 / FR-PATH-03, implemented 22 Oct 2026)
+Obstacles YOLO cannot name (walls, pillars, boxes). Reference, evaluation and the decided rule:
+`ml/depth/README.md` + `ml/depth/eval_photos.py` (do not edit them; the app reproduces them).
+- Model: MiDaS v2.1 small, `app/src/main/assets/midas_small_256_fp32.tflite` (copied from
+  `ml/depth/midas_v2_1_small_256.tflite`, MIT). **Adds ~66 MB to the APK** (debug APK 70 MB -> 136 MB).
+  Input `[1, 256, 256, 3]` float32 RGB NHWC, ImageNet-normalised; output `[1, 256, 256, 1]` relative
+  INVERSE depth (bigger = nearer). `MidasDepth` checks and logs the shapes on load.
+- Runtime: `DepthRunner` on its own single-thread dispatcher (priority just below the detector), newest
+  frame only, plain resize to 256x256, about 4 Hz; GPU delegate if supported, else CPU 4 threads.
+  Missing model, load failure or a bad frame = depth off / no result (reason in the debug view);
+  guidance never depends on it.
+- Scoring (`DepthScorer`, pure): floor ref = median of rows 220-250, cols 96-160; band rows 60-180;
+  zone score = p90 of the band in cols 0-85 / 85-171 / 171-256 divided by the floor ref; no score if
+  the floor ref is not positive.
+- Rule (`DepthRule`, pure, conservative): centre score >= threshold on consecutive results covering
+  >= 1 s -> an unlabeled obstacle at the stop distance in the centre ("Stop. Obstacle ahead.", P0) unless
+  a YOLO obstacle or stairs is already held in the corridor within the stop distance. L/R score >=
+  threshold -> an obstacle in that side lane, so the side chooser never says "Move left/right" into a
+  near wall (both sides near -> P3). Released below threshold - 0.1; results older than 1.5 s = no cue.
+  Depth obstacles have their own hold (same ticks) and never refresh or replace the held YOLO obstacles.
+- Known limits: glass reads as far (a window wall scores ~0.92, below 1.0), pillars read as near (a
+  pillared corridor scores ~0.92, which is why the default is 1.0, not 0.85). Rate, backend and the
+  GPU/CPU contention with YOLO still need checking on the real phones.
+
 ---
 
 ## 8. Navigation behaviour (port faithfully, then extend)
@@ -387,12 +552,19 @@ Defaults (from `reference/blenav/config/config.yaml` → `first_person`, and the
 | Phrase cooldown | 3 s | per identical phrase; P0 uses 2 s |
 | "Path clear" repeat | 6 s | |
 | Horizontal FOV | **measure it** (§8.1); 54° until measured | wrong FOV scales every distance. Applies to the cap camera. The phone-camera test source computes its own FOV from Camera2 focal length + sensor size; recorded videos use a 65° phone default (both settings). |
-| User height | 165 cm | camera height ≈ height − 10 cm (for later ground-plane distance) |
+| User height | 165 cm | the cap camera sits about 10 cm below it |
+| Camera height above floor | **1.30 m** (phone worn at chest), valid 0.5–2.2 | ground-plane distance (FR-DIST-02). Cap camera: user height − ~0.1 m |
+| Ground-plane limits | roll < 25°, ray ≥ 2° below horizon, box bottom not on the frame edge | fixed in `GroundPlane`; otherwise size-based only. Fusion: nearer of size/floor wins |
+| Distance smoothing | EMA α 0.5, match same label + IoU ≥ 0.3, forget after 1 s | fixed in `TrackParams`. A raw distance > 30% nearer than the average is taken at once |
+| Volume-button control | **on** | FR-APP-06, see §8.2: up x2 / up x3 start, down x2 stop, down x3 status; standby after the app was opened |
+| Depth obstacle detection | **on** | FR-OBS-04 / FR-PATH-03, §7.4 |
+| Depth threshold | **1.00**, valid 0.6–1.5 | zone score vs the floor just ahead; sustain 1 s, release at −0.1, stale after 1.5 s (fixed in `DepthParams`) |
+| Decision log | always on while navigating | FR-APP-07: `files/decision_logs/decisions_<time>.csv`, newest 20 kept, excluded from backup; "Share decision log" in the debug view |
 
 Priority policy (lower wins) — SRS §4.7 wording is authoritative for speech:
 | P | Trigger | Speech |
 |---|---|---|
-| 0 | obstacle ≤ stop distance in corridor, **or camera lost > 2 s** | "Stop. Chair ahead." / "Camera disconnected. Please stop." |
+| 0 | obstacle ≤ stop distance in corridor, **or camera lost > 2 s**, or a sustained near unknown obstacle from depth (§7.4) | "Stop. Chair ahead." / "Camera disconnected. Please stop." / "Stop. Obstacle ahead." |
 | 1 | stairs ≤ 4 m | "Caution. Stairs ahead." |
 | 2 | obstacle ≤ warn distance in corridor | "Chair ahead. Move left." (side from `free_side`, ties go right) |
 | 3 | left, centre and right all blocked (new, not in Python) | "Path blocked. Stop and turn." |
@@ -416,6 +588,56 @@ real horizontal FOV once per lens: put the camera exactly 1.00 m from a flat wal
 the left and right edges of the image hit the wall, measure that width W in metres,
 FOV = 2·atan(W / 2). Enter it in Settings. Update the build guide if it differs.
 
+### 8.2 Volume-button control (FR-APP-06, 22 Oct 2026; new gesture scheme 24 Oct 2026)
+Setting "Volume-button control" (default **on**). The old "double-press volume-down toggles" gesture is gone.
+
+| Gesture | Stopped (or standby) | Running without camera | Running with camera | Vibration |
+|---|---|---|---|---|
+| **Volume up x2** | start landmarks only: "Navigation started without camera. To use the camera, press volume up three times." | "Navigation is already running without camera." | "Navigation is already running with camera." (never turns the camera off) | 2 short |
+| **Volume up x3** | start with the camera: "Navigation started with camera. Press volume down twice to stop." | restart with the camera (same phrase) | "Navigation is already running with camera." | 2 short |
+| **Volume down x2** | "Navigation is already stopped. Press volume up twice to start." | stop: "Navigation stopped. Press volume up twice to start." | stop (same) | 1 long |
+| **Volume down x3** | "Navigation is stopped. Press volume up twice to start." | status: "Navigating without camera. Room 304 door, about 3 metres." | "Navigating with camera. ..." | 3 short |
+
+- **Recognition** (`control/MultiPressDetector`, pure): presses of one key within 600 ms of each other form a
+  burst; the burst is decided **500 ms after its last press** (so in practice presses must be < 500 ms
+  apart). Exactly 2 or 3 presses = gesture; 1 or 4+ = only volume; a press of the other key cancels the
+  burst (and starts its own); holding the key (Activity auto-repeat, or presses < 90 ms apart on the
+  MediaSession path) = no gesture. Every press still changes the media-stream volume (the stream speech
+  uses); after a recognised gesture the volume from before its first press is restored. During a phone /
+  VoIP call the keys change the call volume and are never a gesture.
+- **Meaning** (`control/GestureRules`, pure, table above): "with camera" = the selected camera source (the cap
+  in Phase C, the phone camera, a video file), or the phone camera if "No camera" is selected. Up x3 without
+  the camera permission, or when Android refuses the camera: "Camera is not available. Unlock the phone and
+  allow the camera in CapSight. Navigating without camera." and landmarks only (camera and landmarks both
+  impossible: "Camera is not available and landmarks are switched off. Open CapSight to start."). Up x2 with
+  landmarks off: "Landmarks are switched off. To use the camera, press volume up three times." The status line
+  uses the strongest beacon heard now with the §4.6 distance wording ("No landmark nearby." / "Landmarks are
+  not available." otherwise; only the start hint while stopped, as no BLE scan runs then). All replies are
+  INFO priority: they never interrupt or replace a warning. All wording lives in `voice/Phrases.kt`.
+- **Where the keys are seen:** (a) CapSight on screen: `MainActivity.onKeyDown` watches them without consuming
+  them, while the service's MediaSession is not active. With CapSight on screen a missing permission opens the
+  normal start flow for that wish. (b) Navigating, screen on or off: `NavigationService` holds a `MediaSession`
+  with REMOTE playback + `VolumeProvider` ("playing"), so Android routes volume keys to the app. (c) **Standby**:
+  once CapSight has been opened (safety statement accepted) and while the setting is on, `MainActivity` starts
+  `NavigationService` in standby: foreground type connectedDevice, ongoing notification "CapSight ready. Volume
+  up twice to start." with **Exit CapSight** (navigating: "CapSight is guiding you" + Stop navigation / Exit CapSight). Nothing runs in standby (no camera, YOLO, depth, BLE scan, wake lock
+  or Wi-Fi lock); the MediaSession is active only while the screen is off or the phone is locked, so with the
+  phone unlocked in another app the volume keys behave exactly as without CapSight. A short partial wake lock
+  (4 s, timeout) per key press keeps the 500 ms decision on time with the screen off. Stop (any way) returns to
+  standby; Exit (notification, also on the navigation notification) or switching the setting off ends it.
+- **Camera from the pocket, honestly:** Android limits camera use by apps that are not on screen
+  (while-in-use rule; API 34+ also refuses adding the camera service type from the background). Up x3 from
+  standby with the phone locked may therefore be refused. The service detects it (startForeground refused,
+  CameraX critical error, or no frame within 5 s) and continues landmarks only with the "Camera is not
+  available..." phrase; it never crashes or goes silent. Before the fallback a "Camera disconnected. Please
+  stop." may be heard once. Reliable camera start: unlock the phone (CapSight on screen) and press up x3.
+- **Decision log:** gesture starts, stops, status and replies are `control` rows (kind `control`, reason e.g.
+  "volume down x2: stop"), only while a session log is open (nothing is logged while stopped).
+- Known limits, verify per phone: some Android 13+ builds ignore remote sessions without a media route;
+  another app playing media may take the volume keys while it plays (then its volume changes, no gesture);
+  holding a key for exactly ~0.5 s (one auto-repeat) can look like a double press; raising the volume quickly
+  by exactly two or three steps is a gesture (the volume is restored).
+
 ---
 
 ## 9. Requirements map
@@ -434,6 +656,9 @@ Build order — Phase A (each step usable on its own; the cap does not exist yet
 5. Zones / free side (M6)
 6. decide() + 10 Hz loop + its unit tests (M7)
 7. Foreground service, settings, accessible main screen (M9)
+8. BLE landmarks (§4.6, added 18 Oct 2026): scanner in the service, pure proximity/announce
+   logic with JVM tests, phrases through the existing Speaker, permissions (§6.1), debug-view line
+   listing beacons seen with RSSI
 
 Phase B (with the user, once parts are bought): firmware contract v2 (`/status`, `/imu`,
 `ae_level` 0, cap-mount comments) → flash → bench test with the app → assemble the box →

@@ -24,3 +24,8 @@ keystore.properties
 /ml/dataset/
 /ml/runs/
 /ml/*.pt.bak
+/runs/
+/ml/depth/*.tflite
+# Auto-labelling downloads (YOLO-World + CLIP, used by ml/train_classroom.py); re-downloaded on demand
+/weights/
+/yolov8s-worldv2.pt

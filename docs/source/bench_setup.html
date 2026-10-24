@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CapSight Bench Setup</title>
+
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a bench sheet - one wiring diagram on top, then the ordered steps and a fault table. */
+:root {
+  --paper: #f5f6f3;
+  --panel: #ffffff;
+  --ink: #1d2624;
+  --muted: #5b6763;
+  --rule: #d5dbd7;
+  --copper: #b45a1c;      /* USB power / serial wire */
+  --wifi: #0e7a70;        /* Wi-Fi radio link */
+  --board: #24443a;       /* PCB fill */
+  --board-ink: #e9f1ec;
+  --chip: #3a3f3d;
+  --font-display: "Archivo", "Arial Narrow", Arial, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #121816; --panel: #19211e; --ink: #e4ebe7; --muted: #9aa8a2; --rule: #2d3834;
+    --copper: #e2894a; --wifi: #3cc3b5; --board: #2f5a4c; --board-ink: #e9f1ec; --chip: #4a504e;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #121816; --panel: #19211e; --ink: #e4ebe7; --muted: #9aa8a2; --rule: #2d3834;
+  --copper: #e2894a; --wifi: #3cc3b5; --board: #2f5a4c; --board-ink: #e9f1ec; --chip: #4a504e;
+  color-scheme: dark;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 1rem/1.55 var(--font-body);
+}
+.wrap {
+  max-width: 68rem;
+  margin: 0 auto;
+  padding-block: 2rem 4rem;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid;
+  gap: 2.5rem;
+}
+header { display: grid; gap: .5rem; }
+.eyebrow {
+  font: 500 .75rem/1 var(--font-mono);
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+h1 {
+  font: 800 clamp(1.9rem, 4.5vw, 2.9rem)/1.05 var(--font-display);
+  margin: 0;
+  text-wrap: balance;
+}
+h2 {
+  font: 600 1.35rem/1.2 var(--font-display);
+  margin: 0;
+  text-wrap: balance;
+}
+.lede { margin: 0; max-width: 62ch; color: var(--muted); }
+code, .mono { font-family: var(--font-mono); font-size: .92em; }
+code { background: color-mix(in srgb, var(--rule) 55%, transparent); padding: .05em .35em; border-radius: 4px; }
+
+/* ---------- diagram ---------- */
+figure { margin: 0; display: grid; gap: .75rem; }
+.diagram {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  padding: 1rem;
+  overflow-x: auto;
+}
+.diagram svg { display: block; width: 100%; min-width: 640px; height: auto; color: var(--ink); }
+figcaption { color: var(--muted); font-size: .92rem; max-width: 70ch; }
+.legend { display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; font-size: .88rem; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: .5rem; }
+.swatch { width: 28px; height: 0; border-top: 4px solid var(--copper); }
+.swatch.wifi { border-top: 3px dashed var(--wifi); }
+.swatch.opt { border-top: 2px dashed var(--muted); }
+
+/* ---------- facts strip ---------- */
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 1px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.facts div { background: var(--panel); padding: .85rem 1rem; display: grid; gap: .2rem; min-width: 0; }
+.facts dt { font: 500 .72rem/1 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.facts dd { margin: 0; font: 500 1.05rem/1.3 var(--font-mono); overflow-wrap: anywhere; }
+
+/* ---------- steps ---------- */
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 1.25rem; counter-reset: step; }
+.step {
+  counter-increment: step;
+  display: grid;
+  grid-template-columns: 3rem minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+.step::before {
+  content: counter(step);
+  font: 800 1.6rem/1 var(--font-display);
+  color: var(--paper);
+  background: var(--ink);
+  width: 3rem; height: 3rem;
+  border-radius: 50%;
+  display: grid; place-items: center;
+}
+.step-body { display: grid; gap: .5rem; min-width: 0; padding-top: .35rem; }
+.step-body h3 { font: 600 1.1rem/1.3 var(--font-body); margin: 0; }
+.step-body p, .step-body ul { margin: 0; max-width: 66ch; }
+.step-body ul { padding-left: 1.2rem; display: grid; gap: .25rem; }
+.tag {
+  justify-self: start;
+  font: 500 .7rem/1 var(--font-mono);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  padding: .3rem .5rem;
+  border-radius: 999px;
+  border: 1px solid var(--rule);
+  color: var(--muted);
+}
+.tag.once { color: var(--copper); border-color: color-mix(in srgb, var(--copper) 45%, transparent); }
+.expect {
+  border-left: 3px solid var(--wifi);
+  padding: .5rem .85rem;
+  background: color-mix(in srgb, var(--wifi) 8%, var(--panel));
+  border-radius: 0 6px 6px 0;
+  max-width: 66ch;
+}
+.expect b { font-weight: 600; }
+pre {
+  margin: 0;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: .7rem .9rem;
+  overflow-x: auto;
+  font: 400 .88rem/1.5 var(--font-mono);
+  max-width: 100%;
+}
+.inset { max-width: 32rem; }
+.inset svg { display: block; width: 100%; height: auto; color: var(--ink); }
+
+/* ---------- troubleshooting ---------- */
+.table-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 10px; background: var(--panel); }
+table { border-collapse: collapse; width: 100%; min-width: 600px; font-size: .94rem; }
+th, td { text-align: left; vertical-align: top; padding: .7rem .9rem; border-bottom: 1px solid var(--rule); }
+th { font: 500 .72rem/1 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+tr:last-child td { border-bottom: 0; }
+td:first-child { font-weight: 600; }
+
+.note { color: var(--muted); font-size: .9rem; max-width: 70ch; margin: 0; }
+section { display: grid; gap: 1rem; }
+
+/* ---------- print (PDF) ---------- */
+@page { size: A4; margin: 14mm 12mm 14mm 12mm; }
+@media print {
+  :root, :root[data-theme="light"] { --paper: #ffffff; }
+  pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .facts { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .facts dd { font-size: .9rem; }
+  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; font-size: 10.5pt; }
+  .wrap { padding-block: 0; gap: 1.4rem; max-width: none; }
+  .diagram { padding: .5rem; overflow: visible; }
+  .diagram svg { min-width: 0; }
+  .table-wrap { overflow: visible; }
+  table { min-width: 0; }
+  figure, .step, .facts, tr, .inset, pre, .expect { break-inside: avoid; page-break-inside: avoid; }
+  h2 { break-after: avoid; page-break-after: avoid; }
+  /* Chrome mis-paints a table split across pages: keep the fault table whole on its own page. */
+  section.faults { break-before: page; page-break-before: always; }
+  .table-wrap { break-inside: avoid; page-break-inside: avoid; }
+}
+</style>
+
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="eyebrow">CapSight · Phase B bench test · no battery</span>
+    <h1>Run CapSight with the ESP32-CAM on the MB, powered from the laptop</h1>
+    <p class="lede">The ESP32-CAM sits on its ESP32-CAM-MB programmer, and one micro-USB cable from the laptop powers it.
+      The board makes its own Wi-Fi hotspot. The phone joins that hotspot, runs the detection and speaks the warnings.
+      The laptop only supplies power and shows the board's log. It does not need to join the camera's Wi-Fi.</p>
+  </header>
+
+  <figure>
+    <div class="diagram">
+      <svg viewBox="0 0 1000 440" role="img"
+           aria-label="Laptop connects by micro-USB to the ESP32-CAM-MB with the ESP32-CAM on top, for power and the serial log. The ESP32-CAM broadcasts the BLENAV_CAM Wi-Fi hotspot at 192.168.4.1. The phone joins it, reads the camera stream on port 81, detects obstacles and speaks through its speaker or earphones. An optional USB cable from the laptop to the phone installs the app.">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+          </marker>
+          <marker id="arrowWifi" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--wifi)"/>
+          </marker>
+        </defs>
+
+        <!-- ===== Laptop ===== -->
+        <g>
+          <rect x="40" y="90" width="210" height="140" rx="8" fill="var(--panel)" stroke="currentColor" stroke-width="2"/>
+          <rect x="54" y="104" width="182" height="112" rx="3" fill="var(--paper)" stroke="var(--rule)"/>
+          <text x="145" y="138" text-anchor="middle" font-family="var(--font-mono)" font-size="13" fill="currentColor">Arduino IDE</text>
+          <text x="145" y="158" text-anchor="middle" font-family="var(--font-mono)" font-size="12" fill="var(--muted)">Serial Monitor</text>
+          <text x="145" y="176" text-anchor="middle" font-family="var(--font-mono)" font-size="12" fill="var(--muted)">115200 baud</text>
+          <path d="M20,240 L270,240 L250,230 L40,230 Z" fill="var(--panel)" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+          <text x="145" y="270" text-anchor="middle" font-family="var(--font-body)" font-size="15" font-weight="600" fill="currentColor">Laptop</text>
+          <text x="145" y="288" text-anchor="middle" font-family="var(--font-body)" font-size="12" fill="var(--muted)">USB port on the laptop itself</text>
+          <!-- USB port -->
+          <rect x="262" y="226" width="14" height="10" rx="2" fill="var(--copper)"/>
+        </g>
+
+        <!-- ===== USB cable: power + serial ===== -->
+        <path d="M276,231 C320,231 330,330 392,330" fill="none" stroke="var(--copper)" stroke-width="5" stroke-linecap="round"/>
+        <text x="40" y="322" font-family="var(--font-body)" font-size="13" font-weight="600" fill="var(--copper)">micro-USB data cable</text>
+        <text x="40" y="340" font-family="var(--font-body)" font-size="12" fill="var(--muted)">5 V power  +  serial log</text>
+        <text x="40" y="356" font-family="var(--font-body)" font-size="12" fill="var(--muted)">short and thick (brownouts)</text>
+
+        <!-- ===== MB + ESP32-CAM stack ===== -->
+        <g>
+          <!-- MB (programmer) -->
+          <rect x="392" y="250" width="190" height="96" rx="6" fill="var(--board)" stroke="currentColor" stroke-width="1.5"/>
+          <rect x="384" y="318" width="16" height="14" rx="2" fill="var(--copper)"/>
+          <circle cx="560" cy="326" r="8" fill="var(--chip)" stroke="var(--board-ink)" stroke-width="1.5"/>
+          <text x="560" y="309" text-anchor="middle" font-family="var(--font-mono)" font-size="10" fill="var(--board-ink)">IO0</text>
+          <text x="470" y="334" text-anchor="middle" font-family="var(--font-mono)" font-size="11" fill="var(--board-ink)">ESP32-CAM-MB</text>
+          <!-- ESP32-CAM on top -->
+          <rect x="410" y="120" width="154" height="140" rx="6" fill="var(--board)" stroke="currentColor" stroke-width="2"/>
+          <rect x="430" y="140" width="70" height="56" rx="3" fill="var(--chip)"/>
+          <text x="465" y="172" text-anchor="middle" font-family="var(--font-mono)" font-size="10" fill="var(--board-ink)">ESP-32S</text>
+          <!-- antenna trace -->
+          <path d="M514,138 h36 v8 h-30 v8 h30 v8 h-30" fill="none" stroke="var(--board-ink)" stroke-width="1.5"/>
+          <!-- camera on ribbon -->
+          <rect x="470" y="206" width="56" height="10" fill="#c9a227" opacity=".85"/>
+          <circle cx="498" cy="234" r="16" fill="var(--chip)" stroke="var(--board-ink)" stroke-width="1.5"/>
+          <circle cx="498" cy="234" r="6" fill="var(--board-ink)" opacity=".7"/>
+          <rect x="414" y="214" width="10" height="16" rx="2" fill="var(--chip)" stroke="var(--board-ink)"/>
+          <text x="440" y="250" font-family="var(--font-mono)" font-size="10" fill="var(--board-ink)">RST</text>
+          <text x="487" y="108" text-anchor="middle" font-family="var(--font-body)" font-size="15" font-weight="600" fill="currentColor">ESP32-CAM + OV3660</text>
+          <text x="487" y="372" text-anchor="middle" font-family="var(--font-body)" font-size="12" fill="var(--muted)">clipped onto the MB, camera ribbon latched</text>
+        </g>
+
+        <!-- ===== Wi-Fi link ===== -->
+        <g fill="none" stroke="var(--wifi)" stroke-width="2.5" stroke-linecap="round">
+          <path d="M568,140 a14,14 0 0 1 0,22"/>
+          <path d="M576,132 a26,26 0 0 1 0,38"/>
+        </g>
+        <path d="M592,151 L760,151" fill="none" stroke="var(--wifi)" stroke-width="3" stroke-dasharray="8 7" marker-end="url(#arrowWifi)"/>
+        <text x="672" y="96" text-anchor="middle" font-family="var(--font-body)" font-size="13" font-weight="600" fill="var(--wifi)">Wi-Fi hotspot BLENAV_CAM</text>
+        <text x="672" y="114" text-anchor="middle" font-family="var(--font-mono)" font-size="12" fill="currentColor">password blenav1234</text>
+        <text x="672" y="132" text-anchor="middle" font-family="var(--font-mono)" font-size="12" fill="currentColor">192.168.4.1</text>
+        <text x="672" y="176" text-anchor="middle" font-family="var(--font-mono)" font-size="11" fill="var(--muted)">:80 health check</text>
+        <text x="672" y="192" text-anchor="middle" font-family="var(--font-mono)" font-size="11" fill="var(--muted)">:81 video, 320×240, ~11 fps</text>
+
+        <!-- ===== Phone ===== -->
+        <g>
+          <rect x="772" y="70" width="128" height="250" rx="16" fill="var(--panel)" stroke="currentColor" stroke-width="2"/>
+          <rect x="782" y="92" width="108" height="200" rx="4" fill="var(--paper)" stroke="var(--rule)"/>
+          <text x="836" y="122" text-anchor="middle" font-family="var(--font-display)" font-size="15" font-weight="800" fill="currentColor">CapSight</text>
+          <rect x="792" y="136" width="88" height="88" rx="8" fill="#1b5e20"/>
+          <text x="836" y="176" text-anchor="middle" font-family="var(--font-body)" font-size="11" font-weight="600" fill="#ffffff">Stop</text>
+          <text x="836" y="192" text-anchor="middle" font-family="var(--font-body)" font-size="11" font-weight="600" fill="#ffffff">navigation</text>
+          <text x="836" y="246" text-anchor="middle" font-family="var(--font-body)" font-size="10" fill="currentColor">Camera connected</text>
+          <text x="836" y="264" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="var(--muted)">detect · decide</text>
+          <text x="836" y="278" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="var(--muted)">10× per second</text>
+          <text x="836" y="344" text-anchor="middle" font-family="var(--font-body)" font-size="15" font-weight="600" fill="currentColor">Phone</text>
+          <text x="836" y="362" text-anchor="middle" font-family="var(--font-body)" font-size="12" fill="var(--muted)">joined to BLENAV_CAM</text>
+        </g>
+
+        <!-- ===== Speech out ===== -->
+        <path d="M904,190 L944,190" fill="none" stroke="currentColor" stroke-width="2" marker-end="url(#arrow)"/>
+        <g fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M956,176 a14,14 0 0 1 0,28"/>
+          <path d="M964,168 a26,26 0 0 1 0,44"/>
+        </g>
+        <text x="950" y="236" text-anchor="middle" font-family="var(--font-body)" font-size="12" fill="currentColor">speaks</text>
+        <text x="950" y="252" text-anchor="middle" font-family="var(--font-body)" font-size="11" fill="var(--muted)">speaker or</text>
+        <text x="950" y="266" text-anchor="middle" font-family="var(--font-body)" font-size="11" fill="var(--muted)">earphones</text>
+
+        <!-- ===== Optional: laptop -> phone for installing the app ===== -->
+        <path d="M145,368 L145,424 L836,424 L836,374" fill="none" stroke="var(--muted)" stroke-width="1.8" stroke-dasharray="4 5" marker-end="url(#arrow)" color="var(--muted)"/>
+        <text x="520" y="416" text-anchor="middle" font-family="var(--font-body)" font-size="12" fill="var(--muted)">optional 2nd USB cable: install the app (USB debugging), read logs</text>
+      </svg>
+    </div>
+    <div class="legend" aria-hidden="true">
+      <span><i class="swatch"></i>USB power + serial (laptop → MB)</span>
+      <span><i class="swatch wifi"></i>Wi-Fi radio (board → phone)</span>
+      <span><i class="swatch opt"></i>optional, for installing the app</span>
+    </div>
+    <figcaption>One USB cable powers the camera and carries its log to the laptop. All video goes over the board's own Wi-Fi straight to the phone, which does every step from detection to speech.</figcaption>
+  </figure>
+
+  <dl class="facts" aria-label="Key values">
+    <div><dt>Wi-Fi name</dt><dd>BLENAV_CAM</dd></div>
+    <div><dt>Password</dt><dd>blenav1234</dd></div>
+    <div><dt>Camera address</dt><dd>http://192.168.4.1</dd></div>
+    <div><dt>Serial baud</dt><dd>115200</dd></div>
+    <div><dt>Expected video</dt><dd>320×240 · ~11 fps</dd></div>
+  </dl>
+
+  <section aria-labelledby="steps-h">
+    <h2 id="steps-h">Steps</h2>
+    <ol class="steps">
+      <li class="step">
+        <div class="step-body">
+          <h3>Assemble the stack and plug it into the laptop</h3>
+          <ul>
+            <li>Lift the camera connector latch on the ESP32-CAM, push the OV3660 ribbon fully in, close the latch.</li>
+            <li>Clip the ESP32-CAM onto the ESP32-CAM-MB. All pins go in, and the MB's micro-USB port faces away from the camera.</li>
+            <li>Connect the MB to a USB port <b>on the laptop itself</b> with a short <b>data</b> cable. Avoid hubs and long thin cables: the board draws up to about 500 mA while streaming.</li>
+          </ul>
+        </div>
+      </li>
+
+      <li class="step">
+        <div class="step-body">
+          <span class="tag once">first time, or after a firmware change</span>
+          <h3>Flash the firmware from Arduino IDE</h3>
+          <p>Open <code>firmware/esp32_cam_ap/esp32_cam_ap.ino</code> and set:</p>
+          <pre>Board        AI Thinker ESP32-CAM
+Partition    Huge APP (3MB No OTA)
+Upload speed 115200
+Port         the MB's port (e.g. /dev/ttyUSB0 or /dev/ttyACM0)</pre>
+          <p>Click Upload. The MB switches the board into flash mode by itself. If you see <code>Failed to connect to ESP32</code>, hold <b>IO0</b> on the MB, tap <b>RST</b> on the ESP32-CAM, release IO0, then click Upload again. After the upload finishes, tap <b>RST</b> once so the new firmware starts.</p>
+          <div class="inset">
+            <svg viewBox="0 0 470 150" role="img" aria-label="Where the buttons are: RST on the edge of the ESP32-CAM, IO0 on the MB next to its USB port.">
+              <rect x="20" y="20" width="200" height="70" rx="6" fill="var(--board)" stroke="currentColor" stroke-width="1.5"/>
+              <text x="120" y="60" text-anchor="middle" font-family="var(--font-mono)" font-size="12" fill="var(--board-ink)">ESP32-CAM</text>
+              <rect x="10" y="40" width="12" height="18" rx="2" fill="var(--chip)" stroke="var(--board-ink)"/>
+              <rect x="20" y="96" width="200" height="40" rx="6" fill="var(--board)" stroke="currentColor" stroke-width="1.5"/>
+              <text x="100" y="121" text-anchor="middle" font-family="var(--font-mono)" font-size="12" fill="var(--board-ink)">ESP32-CAM-MB</text>
+              <circle cx="196" cy="116" r="8" fill="var(--chip)" stroke="var(--board-ink)" stroke-width="1.5"/>
+              <rect x="212" y="108" width="16" height="14" rx="2" fill="var(--copper)"/>
+              <line x1="10" y1="49" x2="0" y2="49" stroke="currentColor"/>
+              <text x="240" y="44" font-family="var(--font-body)" font-size="13" fill="currentColor">RST: side of the camera board</text>
+              <line x1="236" y1="40" x2="22" y2="44" stroke="var(--muted)" stroke-dasharray="3 3"/>
+              <text x="240" y="118" font-family="var(--font-body)" font-size="13" fill="currentColor">IO0: on the MB</text>
+              <line x1="236" y1="114" x2="205" y2="116" stroke="var(--muted)" stroke-dasharray="3 3"/>
+              <text x="240" y="138" font-family="var(--font-body)" font-size="11" fill="var(--copper)">USB to laptop</text>
+            </svg>
+          </div>
+        </div>
+      </li>
+
+      <li class="step">
+        <div class="step-body">
+          <h3>Check that the board started</h3>
+          <p>In Arduino IDE open Tools → Serial Monitor at <b>115200</b> baud, then tap RST.</p>
+          <div class="expect"><b>You should see:</b> the BLENAV_CAM banner with <code>Join WiFi : BLENAV_CAM</code> and the stream address. <code>[cam] INIT FAILED</code> means the ribbon is not seated: unplug the cable, reseat the ribbon, plug it back in.</div>
+        </div>
+      </li>
+
+      <li class="step">
+        <div class="step-body">
+          <span class="tag">optional</span>
+          <h3>Check the stream from the laptop</h3>
+          <pre>bash tools/stream_check.sh</pre>
+          <p>It moves the laptop onto BLENAV_CAM for about 30 seconds, records 10 s of video, saves the first frame to <code>/tmp/capsight_stream_check/first_frame.jpg</code>, then switches back to your normal Wi-Fi.
+            The camera serves <b>one viewer at a time</b>, so close any browser tab showing <code>192.168.4.1</code> before the phone connects.</p>
+        </div>
+      </li>
+
+      <li class="step">
+        <div class="step-body">
+          <h3>Join the phone to the camera's Wi-Fi</h3>
+          <p>Phone Settings → Wi-Fi → <b>BLENAV_CAM</b> → password <b>blenav1234</b>. When Android says the network has no internet, choose <b>Stay connected</b> (or "Keep Wi-Fi connection"). Mobile data can stay on, because the app sends its camera traffic over this Wi-Fi network only.</p>
+        </div>
+      </li>
+
+      <li class="step">
+        <div class="step-body">
+          <span class="tag once">first time, or after an app change</span>
+          <h3>Install the app on the phone</h3>
+          <p>With a second USB cable to the phone (USB debugging on), from the project folder:</p>
+          <pre>export JAVA_HOME=/var/lib/flatpak/app/com.google.AndroidStudio/current/active/files/extra/jbr
+./gradlew --no-daemon installDebug</pre>
+          <p>Or send <code>app/build/outputs/apk/debug/app-debug.apk</code> over WhatsApp as a document and tap it. Use the USB cable, not wireless debugging, because the phone leaves your home Wi-Fi when it joins BLENAV_CAM.</p>
+        </div>
+      </li>
+
+      <li class="step">
+        <div class="step-body">
+          <h3>Point the app at the real camera and start</h3>
+          <ul>
+            <li>Open CapSight → <b>Debug view</b> → Frame source: <b>ESP32-CAM over Wi-Fi</b>.</li>
+            <li>Tap <b>Use real cap (192.168.4.1)</b> and leave <b>Bind to Wi-Fi network</b> on.</li>
+            <li>Go back and tap the big green <b>Start navigation</b> button.</li>
+          </ul>
+          <div class="expect"><b>You should hear</b> "Navigation started". The debug view shows <b>Camera connected</b> and <code>cam ~11 fps 320x240</code>, with <code>FOV 54° (cap setting)</code>.</div>
+        </div>
+      </li>
+
+      <li class="step">
+        <div class="step-body">
+          <h3>Try it</h3>
+          <ul>
+            <li>Aim the camera at a chair. At about 2.5 m you should hear "Chair ahead. Move left/right." At about 1.2 m you should hear "Stop. Chair ahead." and feel a vibration.</li>
+            <li>Pull the USB cable out of the MB. Within about 2 s the phone says <b>"Camera disconnected. Please stop."</b> Plug it back in: the board reboots in a few seconds and the phone says "Camera connected." by itself (allow up to about 10 s).</li>
+            <li>To finish, tap <b>Stop navigation</b> or use Stop in the notification. You should hear "Navigation stopped".</li>
+          </ul>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <section class="faults" aria-labelledby="fix-h">
+    <h2 id="fix-h">If something goes wrong</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>What you see</th><th>Likely cause</th><th>Fix</th></tr></thead>
+        <tbody>
+          <tr><td>Board reboots every few seconds, stream keeps dropping</td><td>Brownout: the USB port or cable cannot supply enough current</td><td>Use a shorter, thicker cable directly on a laptop port, not a hub</td></tr>
+          <tr><td>BLENAV_CAM missing from the phone's Wi-Fi list</td><td>Firmware not running, or still in flash mode</td><td>Tap RST and check the Serial Monitor for the banner</td></tr>
+          <tr><td>Upload fails with "Failed to connect to ESP32"</td><td>Board did not enter flash mode</td><td>Hold IO0, tap RST, release IO0, upload again</td></tr>
+          <tr><td>App stays on "Connecting to camera"</td><td>Phone not on BLENAV_CAM, address changed, or Bind to Wi-Fi off</td><td>Rejoin BLENAV_CAM; in Debug view tap "Use real cap" and turn Bind on</td></tr>
+          <tr><td>Connected but 0 fps, or a frozen picture</td><td>Camera clock raised above 8 MHz (it jams this board's antenna), or a browser tab is holding the stream</td><td>Close the browser tab; reset the clock with <code>http://192.168.4.1/control?xclk=8</code> or tap RST</td></tr>
+          <tr><td>Phone drops BLENAV_CAM after a minute</td><td>Android prefers networks with internet</td><td>Forget and rejoin, choose "Stay connected"; turn off "Switch to mobile data" if offered</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">This is the bench setup for testing. On the cap, a power bank replaces the laptop, the MB stays at home and the board runs by itself. CapSight supplements the white cane; it does not replace it.</p>
+  </section>
+</div>
+
+</body>
+</html>
